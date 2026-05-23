@@ -99,7 +99,6 @@ void ui_set_notification(const char *msg) {
     if (!msg) return;
     strncpy(g_notification_msg, msg, sizeof(g_notification_msg) - 1);
     g_notification_msg[sizeof(g_notification_msg) - 1] = '\0';
-    // The notification will remain visible for 4 seconds
     g_notification_timer = sceKernelGetProcessTimeWide() + 4000000;
 }
 
@@ -224,7 +223,7 @@ void draw_main_menu(int selected) {
     int fy = g_screen_h - 35;
     draw_panel(0, fy, g_screen_w, 35, COLOR_BG_HEADER);
     draw_text(15, fy + 7, COLOR_TEXT_DIM, 0.8f,
-        "X=Start  O=Toggle  []=Path  SEL+[]=Dest  SEL+▲=Reset  SEL=Prof  ▲=Manage  START=FTP");
+        "X=Start  O=Toggle  []=Dest  SEL+[]=EntrySrc  SEL+▲=Reset  SEL=Prof  ▲=Manage  START=FTP");
 
     draw_scrollbar(ENTRY_COUNT, visible, selected,
                    g_screen_w - 8, list_y, visible * item_h);

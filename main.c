@@ -263,44 +263,55 @@ int main() {
             sceKernelDelayThread(150000);
         }
 
-        if (pad.buttons & SCE_CTRL_SELECT) {
-            if (pad.buttons & SCE_CTRL_SQUARE) {
-                char new_root[PATH_MAX_SIZE];
-                if (run_file_browser(g_backup_root, new_root, 1)) {
-                    strncpy(g_backup_root, new_root, PATH_MAX_SIZE - 1);
-                    g_backup_root[PATH_MAX_SIZE - 1] = '\0';
-                    save_config();
-                    ui_set_notification("Global Destination updated!");
-                }
-                sceKernelDelayThread(300000);
-            }
-            else if (pad.buttons & SCE_CTRL_TRIANGLE) {
-                strcpy(g_backup_root, "ux0:data/VitaVault");
+        
+        if ((pad.buttons & SCE_CTRL_SQUARE) && !(pad.buttons & SCE_CTRL_SELECT)) {
+            char new_root[PATH_MAX_SIZE];
+            if (run_file_browser(g_backup_root, new_root, 1)) {
+                strncpy(g_backup_root, new_root, PATH_MAX_SIZE - 1);
+                g_backup_root[PATH_MAX_SIZE - 1] = '\0';
                 save_config();
-                ui_set_notification("Destination reset to default!");
-                sceKernelDelayThread(300000);
+                ui_set_notification("Global Destination updated!");
             }
-            else {
-                cycle_profile();
-                sceKernelDelayThread(150000);
-            }
+            sceKernelDelayThread(300000);
+            continue; 
         }
-        else if (pad.buttons & SCE_CTRL_SQUARE) {
+
+        
+        if ((pad.buttons & SCE_CTRL_SELECT) && (pad.buttons & SCE_CTRL_SQUARE)) {
             char new_path[PATH_MAX_SIZE];
             if (run_file_browser(entries[selected].source, new_path, 0)) {
                 strncpy(entries[selected].source, new_path, PATH_MAX_SIZE - 1);
                 save_config();
                 ui_set_notification("Entry Source Path updated!");
             }
-            sceKernelDelayThread(150000);
+            sceKernelDelayThread(300000);
+            continue; 
         }
 
+        
+        if ((pad.buttons & SCE_CTRL_SELECT) && (pad.buttons & SCE_CTRL_TRIANGLE)) {
+            strcpy(g_backup_root, "ux0:data/VitaVault");
+            save_config();
+            ui_set_notification("Destination reset to default!");
+            sceKernelDelayThread(300000);
+            continue;
+        }
+
+        
+        if ((pad.buttons & SCE_CTRL_SELECT) && !(pad.buttons & SCE_CTRL_SQUARE) && !(pad.buttons & SCE_CTRL_TRIANGLE)) {
+            cycle_profile();
+            sceKernelDelayThread(150000);
+            continue;
+        }
+
+        
         if (pad.buttons & SCE_CTRL_START) {
             sceKernelDelayThread(300000);
             ftp_server_run();
             sceKernelDelayThread(300000);
         }
 
+        
         if ((pad.buttons & SCE_CTRL_TRIANGLE) && !(pad.buttons & SCE_CTRL_SELECT)) {
             g_backup_count = list_backups(g_backups, MAX_BACKUPS);
             int mgr_selected = 0;
@@ -445,8 +456,10 @@ int main() {
                     }
                 }
             }
+            continue;
         }
 
+        
         if (pad.buttons & SCE_CTRL_CROSS) {
             sceKernelDelayThread(150000);
 
@@ -500,7 +513,7 @@ int main() {
                 net_init();
             }
 
-            // Completion screen
+            
             int done_choice = 0;
             while (done_choice == 0) {
                 draw_backup_complete(&log);
