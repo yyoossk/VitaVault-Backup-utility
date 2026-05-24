@@ -2,6 +2,8 @@
 #include <psp2/ctrl.h>
 #include <psp2/display.h>
 #include <psp2/kernel/processmgr.h>
+#include <psp2/power.h>
+#include <psp2/rtc.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -99,7 +101,7 @@ void ui_set_notification(const char *msg) {
     if (!msg) return;
     strncpy(g_notification_msg, msg, sizeof(g_notification_msg) - 1);
     g_notification_msg[sizeof(g_notification_msg) - 1] = '\0';
-    g_notification_timer = sceKernelGetProcessTimeWide() + 4000000;
+    g_notification_timer = sceKernelGetProcessTimeWide() + 3000000;
 }
 
 static void draw_notification() {
@@ -108,7 +110,7 @@ static void draw_notification() {
         int w = tw + 40;
         int h = 35;
         int x = (g_screen_w - w) / 2;
-        int y = 65;
+        int y = g_screen_h - 80; // Spostata in basso sopra la barra comandi per evitare overlap
         draw_panel(x, y, w, h, COLOR_BG_HEADER);
         draw_text(x + 20, y + 6, COLOR_YELLOW, 0.9f, g_notification_msg);
     }
@@ -133,7 +135,7 @@ int draw_confirm_screen(const char *title, const char *message) {
         vita2d_clear_screen();
 
         draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
-        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, title);
+        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Confirm");
 
         draw_text(30, 80, COLOR_TEXT_MAIN, 1.0f, message);
 
@@ -166,12 +168,26 @@ void draw_main_menu(int selected) {
     vita2d_clear_screen();
 
     draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
-    draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "VitaVault Backup Utility");
+    draw_text(15, 4, COLOR_TEXT_BRIGHT, 1.4f, "VitaVault Backup Utility");
+
+    // Info Batteria e Ora
+    char sys_info[64];
+    SceDateTime time;
+    sceRtcGetCurrentClockLocalTime(&time);
+    int batt_level = scePowerGetBatteryLifePercent();
+    unsigned int batt_color = (batt_level > 20) ? COLOR_GREEN : COLOR_RED;
+    
+    snprintf(sys_info, sizeof(sys_info), "%02d:%02d  |  %d%%", 
+             time.hour, time.minute, batt_level);
+    
+    // Move system info higher to save space
+    int info_x = g_screen_w - text_width_at(sys_info, 0.6f) - 15;
+    draw_text(info_x, 2, batt_color, 0.6f, sys_info);
 
     if (g_ftp_active) {
-        draw_text(420, 22, COLOR_GREEN, 0.9f, "[FTP: ON]");
+        draw_text(420, 6, COLOR_GREEN, 0.9f, "[FTP: ON]");
     } else {
-        draw_text(420, 22, COLOR_TEXT_DIM, 0.9f, "[FTP: OFF]");
+        draw_text(420, 6, COLOR_TEXT_DIM, 0.9f, "[FTP: OFF]");
     }
 
     // Profile info (right-aligned)
@@ -182,12 +198,18 @@ void draw_main_menu(int selected) {
     snprintf(profile_text, sizeof(profile_text),
              "Profile: [%s]  %d/%d active",
              profile_names[current_profile], active, ENTRY_COUNT);
-    draw_text(g_screen_w - 20 - text_width_at(profile_text, 0.9f), 22,
-              COLOR_TEXT_DIM, 0.9f, profile_text);
+    // Adjusted spacing to prevent overlap with title and battery
+    draw_text(g_screen_w - 20 - text_width_at(profile_text, 0.7f), 26,
+              COLOR_TEXT_DIM, 0.7f, profile_text);
 
+    // Dest path: abbreviato se troppo lungo per evitare sovrapposizioni
     char dest_text[PATH_MAX_SIZE + 32];
-    snprintf(dest_text, sizeof(dest_text), "Dest: %s", g_backup_root);
-    draw_text(g_screen_w - 20 - text_width_at(dest_text, 0.7f), 38, COLOR_ACCENT, 0.7f, dest_text);
+    if (strlen(g_backup_root) > 40) {
+        snprintf(dest_text, sizeof(dest_text), "Dest: ...%.100s", g_backup_root + (strlen(g_backup_root) - 37));
+    } else {
+        snprintf(dest_text, sizeof(dest_text), "Dest: %.100s", g_backup_root);
+    }
+    draw_text(g_screen_w - 20 - text_width_at(dest_text, 0.7f), 42, COLOR_ACCENT, 0.7f, dest_text);
 
     int list_x = 0;
     int list_y = 60;
@@ -223,7 +245,7 @@ void draw_main_menu(int selected) {
     int fy = g_screen_h - 35;
     draw_panel(0, fy, g_screen_w, 35, COLOR_BG_HEADER);
     draw_text(15, fy + 7, COLOR_TEXT_DIM, 0.8f,
-        "X=Start  O=Toggle  []=Dest  SEL+[]=EntrySrc  SEL+▲=Reset  SEL=Prof  ▲=Manage  START=FTP");
+        "X=Backup  O=Toggle  []=Dest  SEL=Sett  SEL+▼=Prof  ▲=Manage  START=FTP Server");
 
     draw_scrollbar(ENTRY_COUNT, visible, selected,
                    g_screen_w - 8, list_y, visible * item_h);
@@ -343,7 +365,7 @@ void draw_backup_running(const char *entry_name, int current, int total,
     draw_text(20, y, COLOR_TEXT_BRIGHT, 1.1f, buf);
     y += 35;
 
-    int pct = (total_files > 0) ? (cur_file * 100) / total_files : 0;
+    int pct = (tbytes > 0) ? (int)((cbytes * 100) / tbytes) : 0;
     draw_progress_bar_gui(20, y, g_screen_w - 40, 26, pct);
     y += 38;
 
@@ -622,34 +644,56 @@ void draw_ftp_upload(int done_files, int total_files,
     vita2d_swap_buffers();
 }
 
-void draw_ftp_config() {
+void draw_settings(int selected) {
     vita2d_start_drawing();
     vita2d_clear_screen();
 
     char buf[PATH_MAX_SIZE + 64];
+    draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
+    draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Global Settings");
 
-    draw_text(20, 15, COLOR_TEXT_BRIGHT, 1.4f, "FTP Configuration");
+    int y = 85;
+    const char *options[] = {
+        "Automatic FTP Upload",
+        "Backup Compression (ZIP)",
+        "Integrity Check (MD5)",
+        "Backup Profile",
+        "Start FTP Server (Manual)"
+    };
+    int states[] = { ftp_config.enabled, ftp_config.compression, ftp_config.checksum, 0, 0 };
 
-    snprintf(buf, sizeof(buf), "FTP Upload: %s",
-             ftp_config.enabled ? "ENABLED" : "DISABLED");
-    draw_text(20, 75, ftp_config.enabled ? COLOR_GREEN : COLOR_RED, 1.1f, buf);
+    for (int i = 0; i < 5; i++) {
+        if (i == selected) {
+            vita2d_draw_rectangle(10, y - 5, g_screen_w - 20, 35, COLOR_BG_SELECTED);
+        }
+        
+        if (i < 3) {
+            draw_checkbox(25, y + 5, states[i]);
+        } else if (i == 3) {
+            draw_text(25, y + 2, COLOR_ACCENT, 1.0f, "[CYC]");
+        } else if (i == 4) {
+            draw_text(25, y + 2, COLOR_ACCENT, 1.0f, "[RUN]");
+        }
 
-    snprintf(buf, sizeof(buf), "Server: %s:%d", ftp_config.host, ftp_config.port);
-    draw_text(20, 105, COLOR_TEXT_MAIN, 0.9f, buf);
+        if (i == 3) {
+            snprintf(buf, sizeof(buf), "%s: [%s]", options[i], profile_names[current_profile]);
+            draw_text(170, y + 2, (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN, 1.0f, buf);
+        } else {
+            draw_text(170, y + 2, (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN, 1.0f, options[i]);
+        }
+        
+        y += 45;
+    }
 
-    snprintf(buf, sizeof(buf), "User: %s", ftp_config.user);
-    draw_text(20, 130, COLOR_TEXT_MAIN, 0.9f, buf);
+    // Info Destinazione FTP
+    y += 20;
+    draw_text(25, y, COLOR_TEXT_DIM, 0.8f, "Current FTP Configuration:");
+    snprintf(buf, sizeof(buf), "%s:%d -> %s", ftp_config.host, ftp_config.port, ftp_config.remote_dir);
+    draw_text(25, y + 20, COLOR_ACCENT, 0.8f, buf);
 
-    snprintf(buf, sizeof(buf), "Remote directory: %s", ftp_config.remote_dir);
-    draw_text(20, 155, COLOR_TEXT_MAIN, 0.9f, buf);
-
-    draw_text(20, 210, COLOR_TEXT_DIM, 0.8f,
-              "Edit config.cfg on ux0:data/VitaVault/ to change settings.");
-    draw_text(20, 235, COLOR_TEXT_DIM, 0.8f,
-              "Then restart the application.");
-
-    draw_text(20, g_screen_h - 30, COLOR_TEXT_DIM, 0.8f,
-              "O=Back  X=Toggle FTP Enabled");
+    draw_panel(0, g_screen_h - 35, g_screen_w, 35, COLOR_BG_HEADER);
+    draw_text(15, g_screen_h - 26, COLOR_TEXT_DIM, 0.8f,
+              "UP/DOWN=Navigate  X=Change/Execute  O=Back");
 
     vita2d_end_drawing();
     vita2d_swap_buffers();

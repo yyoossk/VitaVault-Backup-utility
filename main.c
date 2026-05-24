@@ -298,17 +298,59 @@ int main() {
         }
 
         
-        if ((pad.buttons & SCE_CTRL_SELECT) && !(pad.buttons & SCE_CTRL_SQUARE) && !(pad.buttons & SCE_CTRL_TRIANGLE)) {
-            cycle_profile();
-            sceKernelDelayThread(150000);
+        // SELECT (da solo): Apre Impostazioni
+        if ((pad.buttons & SCE_CTRL_SELECT) && !(pad.buttons & SCE_CTRL_SQUARE) && 
+            !(pad.buttons & SCE_CTRL_TRIANGLE) && !(pad.buttons & SCE_CTRL_DOWN)) {
+            sceKernelDelayThread(200000);
+            int set_sel = 0;
+            int set_running = 1;
+            while (set_running) {
+                draw_settings(set_sel);
+                sceCtrlPeekBufferPositive(0, &pad, 1);
+                
+                if (pad.buttons & SCE_CTRL_UP) {
+                    set_sel--; if (set_sel < 0) set_sel = 4;
+                    sceKernelDelayThread(150000);
+                }
+                if (pad.buttons & SCE_CTRL_DOWN) {
+                    set_sel++; if (set_sel > 4) set_sel = 0;
+                    sceKernelDelayThread(150000);
+                }
+                if (pad.buttons & SCE_CTRL_CROSS) {
+                    if (set_sel == 0) ftp_config.enabled = !ftp_config.enabled;
+                    else if (set_sel == 1) ftp_config.compression = !ftp_config.compression;
+                    else if (set_sel == 2) ftp_config.checksum = !ftp_config.checksum;
+                    else if (set_sel == 3) cycle_profile();
+                    else if (set_sel == 4) {
+                        ftp_server_run();
+                        sceKernelDelayThread(200000);
+                    }
+                    save_config();
+                    sceKernelDelayThread(150000);
+                }
+                if (pad.buttons & SCE_CTRL_CIRCLE) {
+                    set_running = 0;
+                    sceKernelDelayThread(200000);
+                }
+                sceKernelDelayThread(16000);
+            }
             continue;
         }
 
-        
+        // SELECT + GIU: Cicla Profili (veloce)
+        if ((pad.buttons & SCE_CTRL_SELECT) && (pad.buttons & SCE_CTRL_DOWN)) {
+            cycle_profile();
+            ui_set_notification("Profile changed!");
+            sceKernelDelayThread(250000);
+            continue;
+        }
+
+        // START: Server FTP Immediato
         if (pad.buttons & SCE_CTRL_START) {
-            sceKernelDelayThread(300000);
+            sceKernelDelayThread(200000);
             ftp_server_run();
-            sceKernelDelayThread(300000);
+            sceKernelDelayThread(200000);
+            continue;
         }
 
         

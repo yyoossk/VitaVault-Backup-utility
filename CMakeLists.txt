@@ -16,7 +16,7 @@ set(VITA_APP_NAME "VitaVault")
 set(VITA_TITLEID  "VTBK00001")
 set(VITA_VERSION  "01.00")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -fno-lto")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -fno-lto -Wl,-z,noexecstack")
 
 set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -s CATEGORY=gdb")
 set(VITA_MAKE_FSELF_FLAGS "${VITA_MAKE_FSELF_FLAGS}")
@@ -34,11 +34,20 @@ add_executable(${PROJECT_NAME}
   backup.c
   ui.c
   ftp.c
+  hash.c
+  zip_utils.c
 )
 
 target_link_libraries(${PROJECT_NAME}
   ftpvita
   vita2d
+  zip
+  bz2
+  lzma
+  zstd
+  ssl
+  crypto
+  pthread
   SceIme_stub
   z
   c

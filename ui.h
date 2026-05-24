@@ -25,7 +25,7 @@ void draw_manage_list(int selected, int count);
 void draw_backup_details(const BackupInfo *b);
 void draw_restore_progress(const char *entry, int done, int errors);
 void draw_ftp_upload(int done_files, int total_files, SceOff done_bytes, SceOff total_bytes);
-void draw_ftp_config();
+void draw_settings(int selected);
 void draw_file_browser(const char *current_path, char names[][256], int count, int selected);
 
 void ui_fini();

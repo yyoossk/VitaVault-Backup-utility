@@ -27,7 +27,7 @@ void ftp_info_log_cb(const char *msg) {
         const char *file_part = strrchr(g_ftp_status, '/');
         if (!file_part) file_part = strrchr(g_ftp_status, ' ');
         
-        snprintf(notify_buf, sizeof(notify_buf), "Ricevuto: %s", (file_part) ? file_part + 1 : "nuovo file");
+        snprintf(notify_buf, sizeof(notify_buf), "Received: %s", (file_part) ? file_part + 1 : "new file");
         ui_set_notification(notify_buf);
     }
 }

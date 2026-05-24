@@ -77,6 +77,8 @@ typedef struct {
     char pass[64];
     char remote_dir[256];
     int enabled;
+    int compression; // 0=Off, 1=Zip
+    int checksum;    // 0=Off, 1=MD5
 } FTPConfig;
 
 

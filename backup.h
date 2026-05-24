@@ -8,14 +8,15 @@ extern int ENTRY_COUNT;
 
 void format_size(char *out, int out_size, SceOff bytes);
 void get_timestamp(char *out, int size);
+void mount_all_partitions();
 void create_dir(const char *path);
 void build_backup_root(char *out, int size);
 SceOff get_free_space(const char *path);
 int check_unsafe_permissions();
 
 int count_files_recursive(const char *path, int *file_count, SceOff *total_bytes);
-int copy_file(const char *src, const char *dst, CopyContext *ctx);
-int copy_directory(const char *src, const char *dst, CopyContext *ctx);
+int copy_file(const char *src, const char *dst, CopyContext *ctx, BackupLog *log);
+int copy_directory(const char *src, const char *dst, CopyContext *ctx, BackupLog *log);
 int restore_entry(const char *src, const char *dst, int *fr, SceOff *br, int *errs);
 
 int do_backup(char *backup_root, int root_size, BackupLog *log);

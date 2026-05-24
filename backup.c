@@ -3,16 +3,19 @@
 #include <psp2/kernel/processmgr.h>
 
 #include <psp2/ctrl.h>
-int sceIoMkdir(const char *file, unsigned int mode);
 #include <psp2/io/dirent.h>
 #include <psp2/io/devctl.h>
+#include <psp2/io/stat.h>
 #include <psp2/rtc.h>
+#include <psp2/vshbridge.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include "backup.h"
 #include "ui.h"
+#include "hash.h"
+#include "zip_utils.h"
 
 BackupEntry entries[] = {
     { "Plugins (tai)",       "ur0:tai",                              1 },
@@ -24,12 +27,14 @@ BackupEntry entries[] = {
     { "Themes / Livearea",   "ux0:theme",                            0 },
     { "Screenshots",         "ux0:picture",                          0 },
     { "Music",               "ux0:music",                            0 },
-    { "Videos",              "ux0:video",                            0 },
+    { "Videos",              "ux0:video",                             0 },
     { "Downloads",           "ux0:download",                         0 },
     { "Boot Config (ur0)",   "ur0:vsh/boot",                         0 },
-    { "Licenses (tm0:)",     "tm0:/",                                0 },
+    { "tm0_licenses",        "tm0:npdrm/act.dat|tm0:psmdrm/act.dat", 0 },
     { "System Registry",     "vd0:registry",                         0 },
     { "App metadata",        "ux0:app",                              0 },
+    { "RetroArch Data",      "ux0:data/retroarch",                   0 },
+    { "System Playlog",      "ur0:user/00/shell/playlog",            0 },
     { "Custom Folder",       "",                                      0 },
 };
 
@@ -50,6 +55,40 @@ static ProgressCallback g_progress_cb = NULL;
 static int g_prog_eidx = 0;
 static int g_prog_total_entries = 0;
 static const char *g_prog_entry_name = NULL;
+
+static int vshIoMount(SceVshMountId id, const char *path, int permission, int a4, int a5, int a6) {
+    uint32_t buf[3];
+    buf[0] = a4;
+    buf[1] = a5;
+    buf[2] = a6;
+    return _vshIoMount(id, path, permission, buf);
+}
+
+static void remount(SceVshMountId id) {
+    vshIoUmount(id, 0, 0, 0);
+    vshIoUmount(id, 1, 0, 0);
+    vshIoMount(id, NULL, 0, 0, 0, 0);
+}
+
+void mount_all_partitions() {
+
+    int tm0_res = vshIoMount(0x600, NULL, 2, 0, 0, 0);
+    
+
+    if (tm0_res < 0) {
+        vshIoMount(0x500, NULL, 2, 0, 0, 0);  
+    }
+    if (tm0_res < 0) {
+        vshIoMount(0x400, NULL, 2, 0, 0, 0);  
+    }
+
+    
+    vshIoMount(0x200, NULL, 0, 0, 0, 0);  
+    vshIoMount(0x000, NULL, 0, 0, 0, 0);  
+    vshIoMount(0x300, NULL, 0, 0, 0, 0);  
+    remount(0x800);                         
+    vshIoMount(0xF00, NULL, 0, 0, 0, 0);  
+}
 
 
 void format_size(char *out, int out_size, SceOff bytes) {
@@ -98,9 +137,7 @@ int check_unsafe_permissions() {
     return 0; 
 }
 
-// --------------------------------------------------
-// FILE OPS
-// --------------------------------------------------
+
 
 int count_files_recursive(const char *path, int *file_count, SceOff *total_bytes) {
     SceUID dir = sceIoDopen(path);
@@ -116,7 +153,18 @@ int count_files_recursive(const char *path, int *file_count, SceOff *total_bytes
         }
         char full_path[PATH_MAX_SIZE];
         snprintf(full_path, sizeof(full_path), "%s/%s", path, ent.d_name);
-        if (SCE_S_ISDIR(ent.d_stat.st_mode)) {
+
+        
+        int is_dir = SCE_S_ISDIR(ent.d_stat.st_mode);
+        if (ent.d_stat.st_mode == 0) {
+            SceIoStat st;
+            if (sceIoGetstat(full_path, &st) >= 0) {
+                is_dir = SCE_S_ISDIR(st.st_mode);
+                ent.d_stat.st_size = st.st_size;
+            }
+        }
+
+        if (is_dir) {
             count_files_recursive(full_path, file_count, total_bytes);
         } else {
             if (file_count)  (*file_count)++;
@@ -128,25 +176,69 @@ int count_files_recursive(const char *path, int *file_count, SceOff *total_bytes
     return 0;
 }
 
+
+static int check_tm0_access() {
+    
+    SceUID dir = sceIoDopen("tm0:");
+    if (dir >= 0) {
+        sceIoDclose(dir);
+        return 1; 
+    }
+    
+    
+    int device_ids[] = {0x600, 0x500, 0x400, 0x700, 0x900};
+    for (int i = 0; i < 5; i++) {
+        vshIoMount(device_ids[i], NULL, 2, 0, 0, 0);
+        dir = sceIoDopen("tm0:");
+        if (dir >= 0) {
+            sceIoDclose(dir);
+            return 1; 
+        }
+    }
+    
+    
+    for (int i = 0; i < 5; i++) {
+        vshIoMount(device_ids[i], NULL, 1, 0, 0, 0);
+        dir = sceIoDopen("tm0:");
+        if (dir >= 0) {
+            sceIoDclose(dir);
+            return 1;
+        }
+    }
+    
+    return 0; 
+}
+
 void prevent_standby(void) {
     sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DISABLE_AUTO_SUSPEND);
 }
 
-int copy_file(const char *src, const char *dst, CopyContext *ctx) {
+int copy_file(const char *src, const char *dst, CopyContext *ctx, BackupLog *log) {
     prevent_standby();
     SceUID in = sceIoOpen(src, SCE_O_RDONLY, 0);
     if (in < 0) {
-        // Se non riusciamo ad aprire il file (es. su tm0:), saltiamo senza segnare errore critico
-        if (ctx) ctx->has_error = 0;
-        return -1;
+        
+        char err_log[PATH_MAX_SIZE + 64];
+        snprintf(err_log, sizeof(err_log), "  SKIP: %s (sceIoOpen Error 0x%08X)\n", src, (unsigned int)in);
+        if (log) log_write(log, err_log);
+
+        if (ctx) {
+            ctx->has_error = 0;
+            ctx->current_file++;
+        }
+        return in; 
     }
 
     SceUID out = sceIoOpen(dst, SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
     if (out < 0) {
         sceIoClose(in);
-        // Se non possiamo creare la destinazione, potrebbe essere un problema di permessi su ux0
+        
+        char err_log[PATH_MAX_SIZE + 64];
+        snprintf(err_log, sizeof(err_log), "  SKIP: Cannot create destination %s (Error 0x%08X)\n", dst, (unsigned int)out);
+        if (log) log_write(log, err_log);
+        
         if (ctx) ctx->has_error = 0;
-        return -1;
+        return out; 
     }
 
     char buffer[32768];
@@ -157,7 +249,7 @@ int copy_file(const char *src, const char *dst, CopyContext *ctx) {
         int w = sceIoWrite(out, buffer, r);
         if (w < 0) { if (ctx) ctx->has_error = 1; break; }
 
-        // Controllo cancellazione (Tasto Cerchio)
+        
         SceCtrlData pad_check;
         if (sceCtrlPeekBufferPositive(0, &pad_check, 1) > 0) {
             if (pad_check.buttons & SCE_CTRL_CIRCLE) {
@@ -171,7 +263,7 @@ int copy_file(const char *src, const char *dst, CopyContext *ctx) {
             ctx->current_bytes += r;
             bytes_since_update += r;
 
-            // Aggiorna la UI ogni 512KB per evitare che l'app sembri bloccata su file grandi
+            
             if (g_progress_cb && bytes_since_update >= 524288) {
                 g_progress_cb(g_prog_entry_name, g_prog_eidx, g_prog_total_entries,
                               ctx->current_bytes, ctx->total_bytes,
@@ -193,7 +285,7 @@ int copy_file(const char *src, const char *dst, CopyContext *ctx) {
     return 0;
 }
 
-int copy_directory(const char *src, const char *dst, CopyContext *ctx) {
+int copy_directory(const char *src, const char *dst, CopyContext *ctx, BackupLog *log) {
     create_dir(dst);
     SceUID dir = sceIoDopen(src);
     if (ctx && ctx->cancel) return -1;
@@ -202,6 +294,10 @@ int copy_directory(const char *src, const char *dst, CopyContext *ctx) {
         if (ctx) ctx->has_error = 1;
         return -1;
     }
+
+    
+    int is_tm0 = (strncmp(src, "tm0:", 4) == 0);
+    int tm0_failures = 0;
 
     SceIoDirent ent;
     memset(&ent, 0, sizeof(ent));
@@ -215,13 +311,35 @@ int copy_directory(const char *src, const char *dst, CopyContext *ctx) {
         char sp[PATH_MAX_SIZE], dp[PATH_MAX_SIZE];
         snprintf(sp, sizeof(sp), "%s/%s", src, ent.d_name);
         snprintf(dp, sizeof(dp), "%s/%s", dst, ent.d_name);
-        if (SCE_S_ISDIR(ent.d_stat.st_mode))
-            copy_directory(sp, dp, ctx);
-        else
-            copy_file(sp, dp, ctx);
+        
+        if (SCE_S_ISDIR(ent.d_stat.st_mode)) {
+            int dir_result = copy_directory(sp, dp, ctx, log);
+            if (is_tm0 && dir_result < 0) {
+                tm0_failures++;
+                char fail_log[PATH_MAX_SIZE + 64];
+                snprintf(fail_log, sizeof(fail_log), "  tm0: Failed to copy directory: %s\n", sp);
+                if (log) log_write(log, fail_log);
+            }
+        } else {
+            int file_result = copy_file(sp, dp, ctx, log);
+            if (is_tm0 && file_result < 0) {
+                tm0_failures++;
+                char fail_log[PATH_MAX_SIZE + 64];
+                snprintf(fail_log, sizeof(fail_log), "  tm0: Failed to copy file: %s\n", sp);
+                if (log) log_write(log, fail_log);
+            }
+        }
         memset(&ent, 0, sizeof(ent));
     }
     sceIoDclose(dir);
+    
+    if (is_tm0 && tm0_failures > 0) {
+        char summary[128];
+        snprintf(summary, sizeof(summary), "  tm0: Total failures: %d\n", tm0_failures);
+        if (log) log_write(log, summary);
+        if (ctx) ctx->has_error = 1;
+    }
+    
     return 0;
 }
 
@@ -364,10 +482,13 @@ void save_config() {
         "ftp_user=%s\n"
         "ftp_pass=%s\n"
         "ftp_dir=%s\n"
+        "compression=%d\n"
+        "checksum=%d\n"
         "# Entry states\n",
         (int)current_profile, g_backup_root,
         ftp_config.enabled, ftp_config.host, ftp_config.port,
-        ftp_config.user, ftp_config.pass, ftp_config.remote_dir);
+        ftp_config.user, ftp_config.pass, ftp_config.remote_dir,
+        ftp_config.compression, ftp_config.checksum);
     sceIoWrite(fd, buf, n);
 
     for (int i = 0; i < ENTRY_COUNT; i++) {
@@ -437,7 +558,7 @@ void load_config() {
         }
     }
 
-    // Handle last line if no newline
+    
     if (pos > 0) {
         line[pos] = '\0';
         if (line[0] != '#' && line[0] != '\0') {
@@ -469,11 +590,17 @@ void apply_profile(ProfileType profile) {
     for (int i = 0; i < 3; i++) entries[core[i]].enabled = 1;
 
     if (profile >= PROFILE_NORMAL) {
-        int norm[] = {3, 4, 5};
-        for (int i = 0; i < 3; i++) entries[norm[i]].enabled = 1;
+        
+        int norm[] = {3, 4, 5, 15, 16};
+        for (int i = 0; i < 5; i++) entries[norm[i]].enabled = 1;
     }
+
     if (profile >= PROFILE_COMPLETE) {
-        for (int i = 0; i < ENTRY_COUNT; i++) entries[i].enabled = 1;
+        
+        for (int i = 0; i < ENTRY_COUNT - 1; i++) entries[i].enabled = 1;
+        
+        if (entries[ENTRY_COUNT - 1].source[0] != '\0')
+            entries[ENTRY_COUNT - 1].enabled = 1;
     }
     save_config();
 }
@@ -485,10 +612,26 @@ void cycle_profile() {
 }
 
 int do_backup(char *backup_root, int root_size, BackupLog *log) {
+    
+    mount_all_partitions();
+
+    
+    int tm0_accessible = check_tm0_access();
+
     build_backup_root(backup_root, root_size);
     create_dir(backup_root);
     memset(log, 0, sizeof(*log));
     log_init(log);
+
+    
+    char tm0_status[256];
+    snprintf(tm0_status, sizeof(tm0_status), "tm0: access check: %s\n", tm0_accessible ? "SUCCESS" : "FAILED");
+    log_write(log, tm0_status);
+    
+    if (!tm0_accessible) {
+       
+        log_write(log, "  WARNING: tm0: partition not accessible despite h-encore/Enso\n");
+    }
 
     int active = 0;
     for (int i = 0; i < ENTRY_COUNT; i++)
@@ -503,9 +646,69 @@ int do_backup(char *backup_root, int root_size, BackupLog *log) {
         if (!entries[i].enabled) continue;
         eidx++;
 
+        
+        if (strcmp(entries[i].source, "tm0:") == 0 && !tm0_accessible) {
+            char dst[PATH_MAX_SIZE];
+            snprintf(dst, sizeof(dst), "%s/%s", backup_root, entries[i].name);
+            log_write_entry_header(log, eidx, active, entries[i].name,
+                                   entries[i].source, dst, 0, 0);
+            char err_msg[PATH_MAX_SIZE + 128];
+            snprintf(err_msg, sizeof(err_msg), "  ERROR: tm0: partition not accessible. Tried multiple device IDs and permissions.\n");
+            log_write(log, err_msg);
+            log->errors++;
+            log_write_entry_result(log, 1);
+            continue;
+        }
+
         int fc = 0;
         SceOff fs = 0;
-        int ok = count_files_recursive(entries[i].source, &fc, &fs);
+        int ok = 0;
+
+        
+        char *pipe = strchr(entries[i].source, '|');
+        if (pipe) {
+            
+            char source_copy[PATH_MAX_SIZE];
+            strncpy(source_copy, entries[i].source, sizeof(source_copy) - 1);
+            source_copy[sizeof(source_copy) - 1] = '\0';
+            
+            char *file_path = strtok(source_copy, "|");
+            while (file_path != NULL) {
+                
+                while (*file_path == ' ') file_path++;
+                
+                
+                SceIoStat st;
+                int stat_result = sceIoGetstat(file_path, &st);
+                if (stat_result >= 0) {
+                    fc++;
+                    fs += st.st_size;
+                    char found_log[PATH_MAX_SIZE + 64];
+                    snprintf(found_log, sizeof(found_log), "  Found file: %s (size: %lld bytes)\n", file_path, (long long)st.st_size);
+                    log_write(log, found_log);
+                } else {
+                    char not_found_log[PATH_MAX_SIZE + 64];
+                    snprintf(not_found_log, sizeof(not_found_log), "  File not found: %s (Error: 0x%08X)\n", file_path, (unsigned int)stat_result);
+                    log_write(log, not_found_log);
+                }
+                file_path = strtok(NULL, "|");
+            }
+            ok = (fc > 0) ? 0 : -1;
+        } else {
+            
+            ok = count_files_recursive(entries[i].source, &fc, &fs);
+        }
+
+        
+        if (strcmp(entries[i].source, "tm0:npdrm/act.dat|tm0:psmdrm/act.dat") == 0) {
+            char tm0_debug[256];
+            snprintf(tm0_debug, sizeof(tm0_debug), "  tm0: Found %d license files, total size: %lld bytes\n", fc, (long long)fs);
+            log_write(log, tm0_debug);
+            
+            if (fc == 0) {
+                log_write(log, "  tm0: WARNING - No license files found\n");
+            }
+        }
 
         char dst[PATH_MAX_SIZE];
         snprintf(dst, sizeof(dst), "%s/%s", backup_root, entries[i].name);
@@ -530,7 +733,82 @@ int do_backup(char *backup_root, int root_size, BackupLog *log) {
         ctx.total_bytes = fs;
         ctx.cancel = cancelled;
 
-        copy_directory(entries[i].source, dst, &ctx);
+        
+        if (strcmp(entries[i].source, "tm0:npdrm/act.dat|tm0:psmdrm/act.dat") == 0) {
+            log_write(log, "  tm0: Starting license files copy...\n");
+        }
+
+        if (pipe) {
+            
+            char source_copy[PATH_MAX_SIZE];
+            strncpy(source_copy, entries[i].source, sizeof(source_copy) - 1);
+            source_copy[sizeof(source_copy) - 1] = '\0';
+            
+            create_dir(dst);
+            
+            char *file_path = strtok(source_copy, "|");
+            while (file_path != NULL) {
+                
+                while (*file_path == ' ') file_path++;
+                
+                
+                char *rel_path = strchr(file_path, ':');
+                if (rel_path) {
+                    rel_path++; 
+                } else {
+                    rel_path = file_path;
+                }
+                
+                
+                char dst_file[2048];
+                snprintf(dst_file, sizeof(dst_file), "%s/%s", dst, rel_path);
+                
+                
+                char path_log[2200];
+                snprintf(path_log, sizeof(path_log), "  Destination path: %s (length: %zu)\n", dst_file, strlen(dst_file));
+                log_write(log, path_log);
+                
+                
+                char *last_slash = strrchr(dst_file, '/');
+                if (last_slash) {
+                    *last_slash = '\0';
+                    create_dir(dst_file);
+                    *last_slash = '/';
+                }
+                
+                CopyContext file_ctx;
+                memset(&file_ctx, 0, sizeof(file_ctx));
+                int copy_result = copy_file(file_path, dst_file, &file_ctx, log);
+                
+                if (copy_result < 0) {
+                    char fail_log[PATH_MAX_SIZE + 64];
+                    snprintf(fail_log, sizeof(fail_log), "  Failed to copy: %s (Error 0x%08X)\n", file_path, (unsigned int)copy_result);
+                    log_write(log, fail_log);
+                    ctx.has_error = 1;
+                } else {
+                    ctx.current_file++;
+                    ctx.current_bytes += file_ctx.current_bytes;
+                }
+                
+                file_path = strtok(NULL, "|");
+            }
+        } else if (ftp_config.compression) {
+            char zip_dst[PATH_MAX_SIZE];
+            snprintf(zip_dst, sizeof(zip_dst), "%s/%s.zip", backup_root, entries[i].name);
+            log_write(log, "  Mode: Compressed (ZIP)\n");
+            zip_directory(entries[i].source, zip_dst, &ctx, entries[i].name, 
+                          eidx, active, g_progress_cb);
+        } else {
+            copy_directory(entries[i].source, dst, &ctx, log);
+        }
+
+        
+        if (strcmp(entries[i].source, "tm0:npdrm/act.dat|tm0:psmdrm/act.dat") == 0) {
+            char tm0_copy_result[256];
+            snprintf(tm0_copy_result, sizeof(tm0_copy_result), "  tm0: Copy completed. Files copied: %d/%d, Bytes: %lld/%lld, Error: %d\n",
+                     ctx.current_file, ctx.total_files, (long long)ctx.current_bytes, (long long)ctx.total_bytes, ctx.has_error);
+            log_write(log, tm0_copy_result);
+        }
 
         if (ctx.cancel) {
             cancelled = 1;
@@ -584,7 +862,7 @@ void cleanup_old_backups(int keep_count) {
         
         if (sceIoRename(backups[i].path, del_path) >= 0) {
             char notify[128];
-            snprintf(notify, sizeof(notify), "Auto-pulizia: rimosso backup %s", backups[i].timestamp);
+            snprintf(notify, sizeof(notify), "Auto-purge: removed backup %s", backups[i].timestamp);
             ui_set_notification(notify);
         }
     }
