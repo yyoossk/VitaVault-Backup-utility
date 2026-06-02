@@ -1,6 +1,7 @@
 #ifndef BACKUP_H
 #define BACKUP_H
 
+#include <psp2/vshbridge.h>
 #include "types.h"
 
 extern BackupEntry entries[];
@@ -9,9 +10,12 @@ extern int ENTRY_COUNT;
 void format_size(char *out, int out_size, SceOff bytes);
 void get_timestamp(char *out, int size);
 void mount_all_partitions();
+void remount(SceVshMountId id);
 void create_dir(const char *path);
 void build_backup_root(char *out, int size);
 SceOff get_free_space(const char *path);
+int entry_source_exists(const BackupEntry *entry);
+void get_last_backup_summary(char *out, int out_size);
 int check_unsafe_permissions();
 
 int count_files_recursive(const char *path, int *file_count, SceOff *total_bytes);
@@ -35,7 +39,7 @@ void log_write(BackupLog *log, const char *text);
 void log_close(BackupLog *log);
 
 void save_config();
-void load_config();
+int load_config();
 
 void apply_profile(ProfileType profile);
 void cycle_profile();

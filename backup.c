@@ -33,6 +33,9 @@ BackupEntry entries[] = {
     { "tm0_licenses",        "tm0:npdrm/act.dat|tm0:psmdrm/act.dat", 0 },
     { "System Registry",     "vd0:registry",                         0 },
     { "App metadata",        "ux0:app",                              0 },
+    { "Game Patches",        "ux0:patch",                            0 },
+    { "DLC / Add-ons",       "ux0:addcont",                          0 },
+    { "User Data (ux0)",     "ux0:data",                             0 },
     { "RetroArch Data",      "ux0:data/retroarch",                   0 },
     { "System Playlog",      "ur0:user/00/shell/playlog",            0 },
     { "Custom Folder",       "",                                      0 },
@@ -42,7 +45,7 @@ char g_backup_root[PATH_MAX_SIZE] = "ux0:data/VitaVault";
 
 int ENTRY_COUNT = sizeof(entries) / sizeof(entries[0]);
 
-ProfileType current_profile = PROFILE_NORMAL;
+ProfileType current_profile = PROFILE_NONE;
 FTPConfig ftp_config;
 BackupInfo g_backups[MAX_BACKUPS];
 int g_backup_count = 0;
@@ -64,7 +67,7 @@ static int vshIoMount(SceVshMountId id, const char *path, int permission, int a4
     return _vshIoMount(id, path, permission, buf);
 }
 
-static void remount(SceVshMountId id) {
+void remount(SceVshMountId id) {
     vshIoUmount(id, 0, 0, 0);
     vshIoUmount(id, 1, 0, 0);
     vshIoMount(id, NULL, 0, 0, 0, 0);
@@ -285,6 +288,60 @@ int copy_file(const char *src, const char *dst, CopyContext *ctx, BackupLog *log
     return 0;
 }
 
+static char g_copy_exclude[PATH_MAX_SIZE] = "";
+
+int list_backups(BackupInfo *backups, int max);
+
+int entry_source_exists(const BackupEntry *entry) {
+    if (!entry || entry->source[0] == '\0')
+        return 0;
+
+    char copy[PATH_MAX_SIZE];
+    strncpy(copy, entry->source, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = '\0';
+
+    char *part = strtok(copy, "|");
+    while (part) {
+        SceUID dfd = sceIoDopen(part);
+        if (dfd >= 0) {
+            sceIoDclose(dfd);
+            return 1;
+        }
+        SceUID fd = sceIoOpen(part, SCE_O_RDONLY, 0);
+        if (fd >= 0) {
+            sceIoClose(fd);
+            return 1;
+        }
+        part = strtok(NULL, "|");
+    }
+    return 0;
+}
+
+void get_last_backup_summary(char *out, int out_size) {
+    BackupInfo backups[MAX_BACKUPS];
+    int count = list_backups(backups, MAX_BACKUPS);
+
+    if (count == 0) {
+        snprintf(out, out_size, "Last: none");
+        return;
+    }
+
+    char sz[32];
+    format_size(sz, sizeof(sz), backups[0].total_size);
+    snprintf(out, out_size, "Last: %s  %s", backups[0].timestamp, sz);
+}
+
+static int should_skip_copy_path(const char *path) {
+    if (!g_copy_exclude[0])
+        return 0;
+
+    size_t elen = strlen(g_copy_exclude);
+    if (strncmp(path, g_copy_exclude, elen) != 0)
+        return 0;
+
+    return (path[elen] == '\0' || path[elen] == '/');
+}
+
 int copy_directory(const char *src, const char *dst, CopyContext *ctx, BackupLog *log) {
     create_dir(dst);
     SceUID dir = sceIoDopen(src);
@@ -311,6 +368,9 @@ int copy_directory(const char *src, const char *dst, CopyContext *ctx, BackupLog
         char sp[PATH_MAX_SIZE], dp[PATH_MAX_SIZE];
         snprintf(sp, sizeof(sp), "%s/%s", src, ent.d_name);
         snprintf(dp, sizeof(dp), "%s/%s", dst, ent.d_name);
+
+        if (should_skip_copy_path(sp))
+            continue;
         
         if (SCE_S_ISDIR(ent.d_stat.st_mode)) {
             int dir_result = copy_directory(sp, dp, ctx, log);
@@ -492,16 +552,23 @@ void save_config() {
     sceIoClose(fd);
 }
 
-void load_config() {
+int load_config() {
     strcpy(ftp_config.host, FTP_DEFAULT_HOST);
     ftp_config.port = FTP_DEFAULT_PORT;
     strcpy(ftp_config.user, FTP_DEFAULT_USER);
     strcpy(ftp_config.pass, FTP_DEFAULT_PASS);
     strcpy(ftp_config.remote_dir, FTP_DEFAULT_DIR);
     ftp_config.enabled = 0;
+    ftp_config.compression = 0;
+    ftp_config.checksum = 0;
 
     SceUID fd = sceIoOpen(CONFIG_PATH, SCE_O_RDONLY, 0);
-    if (fd < 0) return;
+    if (fd < 0) {
+        current_profile = PROFILE_NONE;
+        for (int i = 0; i < ENTRY_COUNT; i++)
+            entries[i].enabled = 0;
+        return 0;
+    }
 
     char line[MAX_LINE];
     int pos = 0;
@@ -569,6 +636,7 @@ void load_config() {
         }
     }
     sceIoClose(fd);
+    return 1;
 }
 
 void apply_profile(ProfileType profile) {
@@ -585,7 +653,7 @@ void apply_profile(ProfileType profile) {
 
     if (profile >= PROFILE_NORMAL) {
         
-        int norm[] = {3, 4, 5, 15, 16};
+        int norm[] = {3, 4, 5, 18, 19};
         for (int i = 0; i < 5; i++) entries[norm[i]].enabled = 1;
     }
 
@@ -726,6 +794,13 @@ int do_backup(char *backup_root, int root_size, BackupLog *log) {
         ctx.total_files = fc;
         ctx.total_bytes = fs;
         ctx.cancel = cancelled;
+
+        g_copy_exclude[0] = '\0';
+        if (strcmp(entries[i].source, "ux0:data") == 0) {
+            strncpy(g_copy_exclude, g_backup_root, sizeof(g_copy_exclude) - 1);
+            g_copy_exclude[sizeof(g_copy_exclude) - 1] = '\0';
+            log_write(log, "  Excluding backup destination from ux0:data copy\n");
+        }
 
         
         if (strcmp(entries[i].source, "tm0:npdrm/act.dat|tm0:psmdrm/act.dat") == 0) {
@@ -883,6 +958,35 @@ void cleanup_old_backups(int keep_count) {
     }
 }
 
+static int is_backup_folder_name(const char *name) {
+    if (!name || !name[0])
+        return 0;
+
+    if (strcmp(name, "logs") == 0 ||
+        strcmp(name, "module") == 0 ||
+        strcmp(name, "config.cfg") == 0)
+        return 0;
+
+    if (name[0] == '_')
+        return 0;
+
+    int len = (int)strlen(name);
+    if (len < 19)
+        return 0;
+
+    if (name[4] != '-' || name[7] != '-' || name[10] != '_')
+        return 0;
+
+    for (int i = 0; i < len; i++) {
+        char c = name[i];
+        if ((c >= '0' && c <= '9') || c == '-' || c == '_')
+            continue;
+        return 0;
+    }
+
+    return 1;
+}
+
 int list_backups(BackupInfo *backups, int max) {
     int count = 0;
     SceUID dir = sceIoDopen(g_backup_root);
@@ -896,9 +1000,7 @@ int list_backups(BackupInfo *backups, int max) {
     while (sceIoDread(dir, &ent) > 0 && dc < MAX_BACKUPS) {
         if (strcmp(ent.d_name, ".") == 0 ||
             strcmp(ent.d_name, "..") == 0 ||
-            strcmp(ent.d_name, "logs") == 0 ||
-            strcmp(ent.d_name, "config.cfg") == 0 ||
-            ent.d_name[0] == '_') {
+            !is_backup_folder_name(ent.d_name)) {
             memset(&ent, 0, sizeof(ent));
             continue;
         }

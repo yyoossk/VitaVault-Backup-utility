@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
+# VitaSDK defines
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   if(DEFINED ENV{VITASDK})
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
@@ -17,12 +18,11 @@ set(VITA_TITLEID  "VTBK00001")
 set(VITA_VERSION  "01.00")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-q -Wall -fno-lto -Wl,-z,noexecstack")
-
 set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -s CATEGORY=gdb")
-set(VITA_MAKE_FSELF_FLAGS "${VITA_MAKE_FSELF_FLAGS}")
+set(VITA_MAKE_FSELF_FLAGS "${VITA_MAKE_FSELF_FLAGS} -a 0x2808000000000000")
 
 include_directories(
-  ${PROJECT_SOURCE_DIR}/src
+  ${PROJECT_SOURCE_DIR}
 )
 
 link_directories(
@@ -36,6 +36,7 @@ add_executable(${PROJECT_NAME}
   ftp.c
   hash.c
   zip_utils.c
+  usb.c
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -68,6 +69,11 @@ target_link_libraries(${PROJECT_NAME}
   SceLibKernel_stub
   SceIofilemgr_stub
   SceAppMgr_stub
+  SceShellSvc_stub
+  SceMtpIfDriver_stub
+  SceUsbstorVStorDriver_stub
+  SceUdcd_stub
+  taihen_stub
   SceVshBridge_stub
 )
 
@@ -83,4 +89,11 @@ vita_create_vpk(${PROJECT_NAME}.vpk
   FILE sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
   FILE sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
   FILE sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+
+  # Pre-compiled USB modules
+  FILE module/kernel.skprx module/kernel.skprx
+  FILE module/patch.skprx module/patch.skprx
+  FILE module/usbdevice.skprx module/usbdevice.skprx
+  FILE module/user.suprx module/user.suprx
+  FILE module/umass.skprx module/umass.skprx
 )

@@ -119,7 +119,7 @@ Use option **7 (Change local folder)** to set any path, for example:
 
 - **Port**: 1337
 - **User**: anonymous
-- **Password**: vita@ftp
+- **Password**: (none)
 - The FTP server is read-only for the Vita's filesystem (ux0:, ur0:, uma0:)
 
 ## Credits

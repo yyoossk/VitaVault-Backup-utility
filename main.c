@@ -24,6 +24,7 @@
 #include "backup.h"
 #include "ui.h"
 #include "ftp.h"
+#include "usb.h"
 
 int ime_get_text(const char *title, const char *initial_text, char *out_text, int max_len) {
     SceImeDialogParam param;
@@ -228,7 +229,7 @@ int main() {
     init_font();
 
     load_config();
-    apply_profile(current_profile);
+    usb_init();
 
     if (ftp_config.enabled) {
         net_init();
@@ -303,34 +304,117 @@ int main() {
             !(pad.buttons & SCE_CTRL_TRIANGLE) && !(pad.buttons & SCE_CTRL_DOWN)) {
             sceKernelDelayThread(200000);
             int set_sel = 0;
+            int set_mode = 0;
             int set_running = 1;
             while (set_running) {
-                draw_settings(set_sel);
+                if (set_mode == 0)
+                    draw_settings(set_sel);
+                else
+                    draw_settings_advanced(set_sel);
+
+                int set_max = (set_mode == 0) ? 6 : 3;
                 sceCtrlPeekBufferPositive(0, &pad, 1);
                 
                 if (pad.buttons & SCE_CTRL_UP) {
-                    set_sel--; if (set_sel < 0) set_sel = 4;
+                    set_sel--; if (set_sel < 0) set_sel = set_max;
                     sceKernelDelayThread(150000);
                 }
                 if (pad.buttons & SCE_CTRL_DOWN) {
-                    set_sel++; if (set_sel > 4) set_sel = 0;
+                    set_sel++; if (set_sel > set_max) set_sel = 0;
                     sceKernelDelayThread(150000);
                 }
                 if (pad.buttons & SCE_CTRL_CROSS) {
-                    if (set_sel == 0) ftp_config.enabled = !ftp_config.enabled;
-                    else if (set_sel == 1) ftp_config.compression = !ftp_config.compression;
-                    else if (set_sel == 2) ftp_config.checksum = !ftp_config.checksum;
-                    else if (set_sel == 3) cycle_profile();
-                    else if (set_sel == 4) {
-                        ftp_server_run();
-                        sceKernelDelayThread(200000);
+                    if (set_mode == 0) {
+                        if (set_sel == 0) ftp_config.enabled = !ftp_config.enabled;
+                        else if (set_sel == 1) ftp_config.compression = !ftp_config.compression;
+                        else if (set_sel == 2) ftp_config.checksum = !ftp_config.checksum;
+                        else if (set_sel == 3) cycle_profile();
+                        else if (set_sel == 4) {
+                            ftp_server_run();
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 5) {
+                            if (g_usb_active) {
+                                int res = usb_stop_mass_storage();
+                                if (res == 0) {
+                                    ui_set_notification("USB Transfer stopped");
+                                } else {
+                                    ui_set_notification("USB Error stopping!");
+                                }
+                            } else {
+                                int res = usb_start_mass_storage();
+                                if (res == 0) {
+                                    int usb_loop = 1;
+                                    while (usb_loop) {
+                                        vita2d_start_drawing();
+                                        vita2d_clear_screen();
+                                        draw_panel(0, 0, 960, 55, COLOR_BG_HEADER);
+                                        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "USB Mass Storage");
+                                        draw_text(30, 150, COLOR_ACCENT, 1.2f, "USB Connected to PC");
+                                        draw_text(30, 200, COLOR_TEXT_MAIN, 1.0f, "Do not disconnect the cable during transfer.");
+                                        draw_text(30, 450, COLOR_TEXT_DIM, 0.8f, "Press CIRCLE to disconnect.");
+                                        vita2d_end_drawing();
+                                        vita2d_swap_buffers();
+
+                                        sceCtrlPeekBufferPositive(0, &pad, 1);
+                                        if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                            usb_stop_mass_storage();
+                                            usb_loop = 0;
+                                        }
+                                        sceKernelDelayThread(16000);
+                                    }
+                                } else {
+                                    char err_msg[64];
+                                    if (res == (int)0x80800001)
+                                        snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
+                                    else if (res == (int)0x80800002)
+                                        snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
+                                    else if (res == (int)0x80800003)
+                                        snprintf(err_msg, sizeof(err_msg), "Storage device not found");
+                                    else
+                                        snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                                    ui_set_notification(err_msg);
+                                }
+                            }
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 6) {
+                            set_mode = 1;
+                            set_sel = 0;
+                            sceKernelDelayThread(150000);
+                        }
+                    } else {
+                        if (set_sel == 0) {
+                            int res = mountGamecardUx0();
+                            ui_set_notification(res == 0 ?
+                                "Gamecard mounted to ux0:" : "Failed to mount gamecard!");
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 1) {
+                            int res = umountGamecardUx0();
+                            ui_set_notification(res == 0 ?
+                                "Gamecard unmounted from ux0:" : "Failed to unmount gamecard!");
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 2) {
+                            int res = mountUsbUx0();
+                            ui_set_notification(res == 0 ?
+                                "USB mounted to ux0:" : "Failed to mount USB!");
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 3) {
+                            int res = umountUsbUx0();
+                            ui_set_notification(res == 0 ?
+                                "USB unmounted from ux0:" : "Failed to unmount USB!");
+                            sceKernelDelayThread(200000);
+                        }
                     }
                     save_config();
                     sceKernelDelayThread(150000);
                 }
                 if (pad.buttons & SCE_CTRL_CIRCLE) {
-                    set_running = 0;
-                    sceKernelDelayThread(200000);
+                    if (set_mode == 1) {
+                        set_mode = 0;
+                        sceKernelDelayThread(150000);
+                    } else {
+                        set_running = 0;
+                        sceKernelDelayThread(200000);
+                    }
                 }
                 sceKernelDelayThread(16000);
             }
@@ -547,33 +631,68 @@ int main() {
 
             if (log.errors == 0) cleanup_old_backups(5);
 
-            if (ftp_config.enabled) {
+            if (ftp_config.enabled && log.errors == 0) {
                 net_init();
-            }
+                ftp_post_backup_screen(backup_root);
+            } else {
+                int done_choice = 0;
+                while (done_choice == 0) {
+                    draw_backup_complete(&log);
+                    sceCtrlPeekBufferPositive(0, &pad, 1);
+                    sceKernelDelayThread(10000);
 
-            
-            int done_choice = 0;
-            while (done_choice == 0) {
-                draw_backup_complete(&log);
-                sceCtrlPeekBufferPositive(0, &pad, 1);
-                sceKernelDelayThread(10000);
+                    if (pad.buttons & SCE_CTRL_SQUARE) {
+                        sceKernelDelayThread(150000);
 
-                if (pad.buttons & SCE_CTRL_START) {
-                    sceKernelDelayThread(150000);
+                        int res = usb_start_mass_storage();
+                        if (res == 0) {
+                            const char *folder = strrchr(backup_root, '/');
+                            if (folder) folder++;
+                            else {
+                                folder = strrchr(backup_root, ':');
+                                folder = folder ? folder + 1 : backup_root;
+                            }
 
-                    if (ftp_config.enabled) {
-                        ui_set_notification("Starting FTP server for PC download...");
-                        sceKernelDelayThread(300000);
-                        
-                       
-                        ftp_server_run();
+                            char folder_name_display[64];
+                            strncpy(folder_name_display, folder, sizeof(folder_name_display) - 1);
+                            folder_name_display[sizeof(folder_name_display) - 1] = '\0';
+
+                            char usb_msg[512];
+                            snprintf(usb_msg, sizeof(usb_msg),
+                                "USB Mass Storage active.\n\n"
+                                "On PC open the Vita drive:\n"
+                                "data\\VitaVault\\%s\n\n"
+                                "Use download_backup.bat option 5,\n"
+                                "or copy the folder manually.\n\n"
+                                "Press O to disconnect USB.",
+                                folder_name_display);
+
+                            int usb_loop = 1;
+                            while (usb_loop) {
+                                draw_text_screen("USB Transfer to PC", usb_msg);
+                                sceCtrlPeekBufferPositive(0, &pad, 1);
+                                sceKernelDelayThread(10000);
+                                if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                    usb_stop_mass_storage();
+                                    usb_loop = 0;
+                                    sceKernelDelayThread(150000);
+                                }
+                            }
+                        } else {
+                            char err_msg[64];
+                            if (res == (int)0x80800003)
+                                snprintf(err_msg, sizeof(err_msg), "Storage device not found");
+                            else
+                                snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                            ui_set_notification(err_msg);
+                            sceKernelDelayThread(300000);
+                        }
                     }
-                    done_choice = 1;
-                }
 
-                if (pad.buttons & SCE_CTRL_CIRCLE) {
-                    done_choice = 1;
-                    sceKernelDelayThread(150000);
+                    if (pad.buttons & SCE_CTRL_START || pad.buttons & SCE_CTRL_CIRCLE) {
+                        done_choice = 1;
+                        sceKernelDelayThread(150000);
+                    }
                 }
             }
             
@@ -581,7 +700,7 @@ int main() {
         }
     }
 
-    if (g_ftp_active) ftpvita_fini();
+    if (g_ftp_active) ftp_server_stop();
     net_term();
     ui_fini();
     vita2d_fini();

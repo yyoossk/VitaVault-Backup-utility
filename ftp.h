@@ -28,6 +28,9 @@ int ftp_upload_backup(FTPConfig *cfg, const char *backup_path,
                       void (*progress_cb)(int done_files, int total_files,
                                           SceOff done_bytes, SceOff total_bytes));
 
-void ftp_server_run(void);
+int ftp_server_start(void);
+void ftp_server_stop(void);
+extern void ftp_post_backup_screen(const char *backup_root);
+extern void ftp_server_run();
 
 #endif

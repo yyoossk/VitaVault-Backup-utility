@@ -286,7 +286,7 @@ int ftp_upload_directory(int ctrl_sock, const char *local_dir, const char *remot
     }
     sceIoDclose(dir);
 
-    
+    // Second pass: upload files (at current level only, no recursion)
     dir = sceIoDopen(local_dir);
     if (dir < 0) return 0;
 
@@ -300,7 +300,7 @@ int ftp_upload_directory(int ctrl_sock, const char *local_dir, const char *remot
         snprintf(lp, sizeof(lp), "%s/%s", local_dir, ent.d_name);
 
         if (SCE_S_ISDIR(ent.d_stat.st_mode)) {
-            
+            // Upload subdirectory: CWD into it recursively
             char sub_remote[PATH_MAX_SIZE];
             snprintf(sub_remote, sizeof(sub_remote), "%s/%s", remote_base, ent.d_name);
             ftp_upload_directory(ctrl_sock, lp, sub_remote,
@@ -359,7 +359,7 @@ int ftp_upload_backup(FTPConfig *cfg, const char *backup_path,
         return 0;
     }
 
-    
+    // Handle both forward and backward slashes for path parsing
     const char *backup_name = strrchr(backup_path, '/');
     if (!backup_name) backup_name = strrchr(backup_path, '\\');
     if (backup_name) backup_name++; else backup_name = backup_path;
@@ -426,24 +426,135 @@ int ftp_upload_backup(FTPConfig *cfg, const char *backup_path,
     return 1;
 }
 
-void ftp_server_run() {
+int ftp_server_start(void) {
+    if (g_ftp_active)
+        return 1;
+
     char ip[32];
     unsigned short int port = 1337;
 
-    if (!g_ftp_active) {
-        sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
+    if (!net_init())
+        return 0;
 
-        ftpvita_set_info_log_cb(ftp_info_log_cb);
+    sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
+    ftpvita_set_info_log_cb(ftp_info_log_cb);
 
-        if (ftpvita_init(ip, &port) < 0) return;
+    if (ftpvita_init(ip, &port) < 0)
+        return 0;
 
-        ftpvita_add_device("ux0:");
-        ftpvita_add_device("ur0:");
-        ftpvita_add_device("uma0:");
-        g_ftp_active = 1;
-    } else {
-        net_get_local_ip(ip, sizeof(ip));
+    ftpvita_add_device("ux0:");
+    ftpvita_add_device("ur0:");
+    ftpvita_add_device("uma0:");
+    g_ftp_active = 1;
+    strcpy(g_ftp_status, "Waiting for PC connection...");
+    return 1;
+}
+
+void ftp_server_stop(void) {
+    if (g_ftp_active) {
+        ftpvita_fini();
+        g_ftp_active = 0;
+        strcpy(g_ftp_status, "Server stopped.");
     }
+}
+
+static void ftp_path_for_client(const char *vita_path, char *out, int out_size) {
+    if (strncmp(vita_path, "ux0:", 4) == 0)
+        snprintf(out, out_size, "/ux0:%s", vita_path + 4);
+    else if (strncmp(vita_path, "uma0:", 5) == 0)
+        snprintf(out, out_size, "/uma0:%s", vita_path + 5);
+    else if (strncmp(vita_path, "ur0:", 4) == 0)
+        snprintf(out, out_size, "/ur0:%s", vita_path + 4);
+    else
+        snprintf(out, out_size, "%s", vita_path);
+}
+
+void ftp_post_backup_screen(const char *backup_root) {
+    if (!ftp_server_start()) {
+        draw_text_screen("FTP Error", "Could not start FTP server.\nPress any button to continue.");
+        return;
+    }
+
+    char ip[32];
+    net_get_local_ip(ip, sizeof(ip));
+
+    const char *folder = strrchr(backup_root, '/');
+    if (folder) folder++;
+    else {
+        folder = strrchr(backup_root, ':');
+        folder = folder ? folder + 1 : backup_root;
+    }
+
+    char remote_path[PATH_MAX_SIZE + 16];
+    ftp_path_for_client(backup_root, remote_path, sizeof(remote_path));
+
+    SceCtrlData pad;
+    int running = 1;
+
+    while (running) {
+        vita2d_start_drawing();
+        vita2d_clear_screen();
+        draw_panel(0, 0, 960, 55, COLOR_BG_HEADER);
+        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "FTP Ready for PC Download");
+
+        char buf[512];
+        int y = 75;
+        draw_text(20, y, COLOR_GREEN, 1.0f, "FTP server active - use download_backup.bat on PC.");
+        y += 28;
+
+        snprintf(buf, sizeof(buf), "Vita IP : %s", ip);
+        draw_text(20, y, COLOR_TEXT_BRIGHT, 1.1f, buf);
+        y += 26;
+        draw_text(20, y, COLOR_TEXT_MAIN, 1.0f, "Port    : 1337");
+        y += 26;
+        snprintf(buf, sizeof(buf), "User    : anonymous");
+        draw_text(20, y, COLOR_TEXT_MAIN, 1.0f, buf);
+        y += 26;
+        snprintf(buf, sizeof(buf), "Pass    : (none)");
+        draw_text(20, y, COLOR_TEXT_MAIN, 1.0f, buf);
+        y += 30;
+
+        draw_text(20, y, COLOR_TEXT_DIM, 0.9f, "Backup folder:");
+        y += 22;
+        draw_text(20, y, COLOR_ACCENT, 0.85f, folder);
+        y += 24;
+        draw_text(20, y, COLOR_TEXT_DIM, 0.9f, "FTP path:");
+        y += 22;
+        draw_text(20, y, COLOR_ACCENT, 0.85f, remote_path);
+        y += 30;
+
+        draw_text(20, y, COLOR_YELLOW, 0.85f, g_ftp_status);
+        y += 28;
+
+        draw_text(20, y, COLOR_TEXT_DIM, 0.8f, "Set VITA_IP in download_backup.bat to the IP above.");
+        y += 20;
+        draw_text(20, y, COLOR_TEXT_DIM, 0.8f, "O: Stop FTP and return   START: Keep FTP running");
+
+        vita2d_end_drawing();
+        vita2d_swap_buffers();
+
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        sceKernelDelayThread(16000);
+
+        if (pad.buttons & SCE_CTRL_CIRCLE) {
+            ftp_server_stop();
+            running = 0;
+            sceKernelDelayThread(150000);
+        }
+        if (pad.buttons & SCE_CTRL_START) {
+            running = 0;
+            sceKernelDelayThread(150000);
+        }
+    }
+}
+
+void ftp_server_run() {
+    if (!ftp_server_start())
+        return;
+
+    char ip[32];
+    net_get_local_ip(ip, sizeof(ip));
+    unsigned short int port = 1337;
 
     SceCtrlData pad;
     int running = 1;
@@ -460,7 +571,7 @@ void ftp_server_run() {
         snprintf(buf, sizeof(buf), "Port: %d", port);
         draw_text(30, 140, COLOR_TEXT_MAIN, 1.2f, buf);
         
-        draw_text(30, 250, COLOR_ACCENT, 1.0f, "Connect with FileZilla using these credentials.");
+        draw_text(30, 250, COLOR_ACCENT, 1.0f, "Connect with FileZilla or download_backup.bat.");
         
         draw_text(30, 320, COLOR_TEXT_DIM, 0.9f, "Current status:");
         draw_text(30, 350, COLOR_YELLOW, 1.0f, g_ftp_status);
@@ -475,9 +586,7 @@ void ftp_server_run() {
             running = 0;
         }
         if (pad.buttons & SCE_CTRL_CIRCLE) {
-            ftpvita_fini();
-            g_ftp_active = 0;
-            strcpy(g_ftp_status, "Server stopped.");
+            ftp_server_stop();
             running = 0;
         }
         sceKernelDelayThread(16000);

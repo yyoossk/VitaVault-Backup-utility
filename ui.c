@@ -11,6 +11,7 @@
 #include "ui.h"
 #include "backup.h"
 #include "ftp.h"
+#include "usb.h"
 
 static vita2d_pgf *g_font = NULL;
 float g_font_size = 1.0f;
@@ -110,7 +111,7 @@ static void draw_notification() {
         int w = tw + 40;
         int h = 35;
         int x = (g_screen_w - w) / 2;
-        int y = g_screen_h - 80; 
+        int y = g_screen_h - 80; // Spostata in basso sopra la barra comandi per evitare overlap
         draw_panel(x, y, w, h, COLOR_BG_HEADER);
         draw_text(x + 20, y + 6, COLOR_YELLOW, 0.9f, g_notification_msg);
     }
@@ -163,55 +164,108 @@ int draw_confirm_screen(const char *title, const char *message) {
     return (choice == 1) ? 1 : 0;
 }
 
+static void get_partition_root(const char *path, char *out, int out_size) {
+    const char *colon = strchr(path, ':');
+    if (!colon) {
+        snprintf(out, out_size, "ux0:");
+        return;
+    }
+    int len = (int)(colon - path) + 1;
+    if (len >= out_size)
+        len = out_size - 1;
+    strncpy(out, path, len);
+    out[len] = '\0';
+}
+
+static void format_entry_path_display(const BackupEntry *entry, char *out, int out_size) {
+    if (entry->source[0] == '\0') {
+        snprintf(out, out_size, "(not set)");
+        return;
+    }
+
+    if (!entry_source_exists(entry)) {
+        if (strlen(entry->source) > 36)
+            snprintf(out, out_size, "...%s (not found)", entry->source + strlen(entry->source) - 33);
+        else
+            snprintf(out, out_size, "%s (not found)", entry->source);
+        return;
+    }
+
+    if (strlen(entry->source) > 42)
+        snprintf(out, out_size, "...%s", entry->source + strlen(entry->source) - 39);
+    else
+        snprintf(out, out_size, "%s", entry->source);
+}
+
+static void get_main_menu_footer(int selected, char *out, int out_size) {
+    if (selected < 0 || selected >= ENTRY_COUNT) {
+        snprintf(out, out_size, "X: Backup  O: Toggle  []: Dest  SEL: Settings  TRI: Manage  START: FTP");
+        return;
+    }
+
+    snprintf(out, out_size,
+             "%s %s  |  O: Toggle  X: Backup  []: Dest  SEL: Settings",
+             entries[selected].name,
+             entries[selected].enabled ? "[ON]" : "[OFF]");
+}
+
 void draw_main_menu(int selected) {
     vita2d_start_drawing();
     vita2d_clear_screen();
 
-    draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
-    draw_text(15, 4, COLOR_TEXT_BRIGHT, 1.4f, "VitaVault Backup Utility");
+    char buf[PATH_MAX_SIZE + 128];
+    const int header_h = 72;
+    const int list_y = header_h + 2;
 
-    // Info Batteria e Ora
-    char sys_info[64];
+    draw_panel(0, 0, g_screen_w, header_h, COLOR_BG_HEADER);
+
+    const char *title = "VitaVault Backup Utility";
+    const float title_size = 1.15f;
+    int title_w = text_width_at(title, title_size);
+    draw_text((g_screen_w - title_w) / 2, 2, COLOR_TEXT_BRIGHT, title_size, title);
+
     SceDateTime time;
     sceRtcGetCurrentClockLocalTime(&time);
     int batt_level = scePowerGetBatteryLifePercent();
     unsigned int batt_color = (batt_level > 20) ? COLOR_GREEN : COLOR_RED;
-    
-    snprintf(sys_info, sizeof(sys_info), "%02d:%02d  |  %d%%", 
-             time.hour, time.minute, batt_level);
-    
-    // Move system info higher to save space
-    int info_x = g_screen_w - text_width_at(sys_info, 0.6f) - 15;
-    draw_text(info_x, 2, batt_color, 0.6f, sys_info);
 
-    if (g_ftp_active) {
-        draw_text(420, 6, COLOR_GREEN, 0.9f, "[FTP: ON]");
-    } else {
-        draw_text(420, 6, COLOR_TEXT_DIM, 0.9f, "[FTP: OFF]");
-    }
+    snprintf(buf, sizeof(buf), "%02d:%02d  %d%%", time.hour, time.minute, batt_level);
+    draw_text(g_screen_w - 20 - text_width_at(buf, 0.65f), 2, batt_color, 0.65f, buf);
 
-    
-    char profile_text[128];
+    int status_x = 15;
+    draw_text(status_x, 18, g_ftp_active ? COLOR_GREEN : COLOR_TEXT_DIM, 0.75f,
+              g_ftp_active ? "FTP: ON" : "FTP: OFF");
+    status_x += text_width_at("FTP: OFF  ", 0.75f);
+    draw_text(status_x, 18, g_usb_active ? COLOR_GREEN : COLOR_TEXT_DIM, 0.75f,
+              g_usb_active ? "USB: ON" : "USB: OFF");
+
     int active = 0;
     for (int i = 0; i < ENTRY_COUNT; i++)
         if (entries[i].enabled) active++;
-    snprintf(profile_text, sizeof(profile_text),
-             "Profile: [%s]  %d/%d active",
+
+    snprintf(buf, sizeof(buf), "Profile: %s  %d/%d",
              profile_names[current_profile], active, ENTRY_COUNT);
+    draw_text(g_screen_w - 20 - text_width_at(buf, 0.72f), 18, COLOR_TEXT_DIM, 0.72f, buf);
 
-    draw_text(g_screen_w - 20 - text_width_at(profile_text, 0.7f), 26,
-              COLOR_TEXT_DIM, 0.7f, profile_text);
+    char part[16];
+    get_partition_root(g_backup_root, part, sizeof(part));
+    char free_sz[32];
+    SceOff free_space = get_free_space(part);
+    format_size(free_sz, sizeof(free_sz), free_space);
 
-    char dest_text[PATH_MAX_SIZE + 32];
-    if (strlen(g_backup_root) > 40) {
-        snprintf(dest_text, sizeof(dest_text), "Dest: ...%.100s", g_backup_root + (strlen(g_backup_root) - 37));
-    } else {
-        snprintf(dest_text, sizeof(dest_text), "Dest: %.100s", g_backup_root);
-    }
-    draw_text(g_screen_w - 20 - text_width_at(dest_text, 0.7f), 42, COLOR_ACCENT, 0.7f, dest_text);
+    if (strlen(g_backup_root) > 34)
+        snprintf(buf, sizeof(buf), "Dest: ...%s", g_backup_root + strlen(g_backup_root) - 31);
+    else
+        snprintf(buf, sizeof(buf), "Dest: %s", g_backup_root);
+    draw_text(15, 34, COLOR_ACCENT, 0.72f, buf);
+
+    snprintf(buf, sizeof(buf), "Free: %s", free_sz);
+    draw_text(g_screen_w - 20 - text_width_at(buf, 0.72f), 34, COLOR_GREEN, 0.72f, buf);
+
+    get_last_backup_summary(buf, sizeof(buf));
+    draw_text(15, 50, COLOR_TEXT_DIM, 0.68f, buf);
 
     int list_x = 0;
-    int list_y = 60;
     int list_w = g_screen_w;
     int item_h = 30;
     int visible = (g_screen_h - list_y - 40) / item_h;
@@ -237,14 +291,17 @@ void draw_main_menu(int selected) {
                   (idx == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN,
                   1.0f, entries[idx].name);
 
-        draw_text(list_w - 20 - text_width_at(entries[idx].source, 0.8f), y + 5,
-                  COLOR_TEXT_DIM, 0.8f, entries[idx].source);
+        format_entry_path_display(&entries[idx], buf, sizeof(buf));
+        unsigned int path_color = entry_source_exists(&entries[idx]) ?
+            COLOR_TEXT_DIM : COLOR_RED;
+        draw_text(list_w - 20 - text_width_at(buf, 0.8f), y + 5,
+                  path_color, 0.8f, buf);
     }
 
     int fy = g_screen_h - 35;
     draw_panel(0, fy, g_screen_w, 35, COLOR_BG_HEADER);
-    draw_text(15, fy + 7, COLOR_TEXT_DIM, 0.8f,
-        "X=Backup  O=Toggle  []=Dest  SEL=Sett  SEL+▼=Prof  ▲=Manage  START=FTP");
+    get_main_menu_footer(selected, buf, sizeof(buf));
+    draw_text(15, fy + 7, COLOR_TEXT_DIM, 0.72f, buf);
 
     draw_scrollbar(ENTRY_COUNT, visible, selected,
                    g_screen_w - 8, list_y, visible * item_h);
@@ -430,13 +487,15 @@ void draw_backup_complete(const BackupLog *log) {
         y += 28;
     }
 
+    draw_text(20, y, COLOR_GREEN, 0.9f, "[]: USB Mass Storage - copy backup to PC via cable.");
+    y += 22;
+
     if (ftp_config.enabled) {
-        draw_text(20, y, COLOR_GREEN, 0.9f, "Press START to start FTP server and download to PC.");
+        draw_text(20, y, COLOR_GREEN, 0.9f, "FTP download starts automatically after backup.");
         y += 22;
-        draw_text(20, y, COLOR_TEXT_DIM, 0.8f, "Press O to exit.");
-    } else {
-        draw_text(20, y, COLOR_TEXT_DIM, 0.9f, "Press START to exit.");
     }
+
+    draw_text(20, y, COLOR_TEXT_DIM, 0.8f, "O: Exit");
 
     vita2d_end_drawing();
     vita2d_swap_buffers();
@@ -644,6 +703,23 @@ void draw_ftp_upload(int done_files, int total_files,
     vita2d_swap_buffers();
 }
 
+static void draw_icon_play(int x, int y, unsigned int color) {
+    vita2d_draw_rectangle(x, y + 4, 2, 4, color);
+    vita2d_draw_rectangle(x + 2, y + 2, 2, 8, color);
+    vita2d_draw_rectangle(x + 4, y, 2, 12, color);
+    vita2d_draw_rectangle(x + 6, y + 2, 2, 8, color);
+    vita2d_draw_rectangle(x + 8, y + 4, 2, 4, color);
+}
+
+static void draw_icon_stop(int x, int y, unsigned int color) {
+    vita2d_draw_rectangle(x, y, 12, 12, color);
+}
+
+static void draw_settings_footer(const char *help) {
+    draw_panel(0, g_screen_h - 35, g_screen_w, 35, COLOR_BG_HEADER);
+    draw_text(15, g_screen_h - 26, COLOR_TEXT_DIM, 0.72f, help);
+}
+
 void draw_settings(int selected) {
     vita2d_start_drawing();
     vita2d_clear_screen();
@@ -652,47 +728,143 @@ void draw_settings(int selected) {
     draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
     draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Global Settings");
 
-    int y = 85;
-    const char *options[] = {
-        "Automatic FTP Upload",
-        "Backup Compression (ZIP)",
-        "Integrity Check (MD5)",
-        "Backup Profile",
-        "Start FTP Server (Manual)"
+    typedef enum {
+        SET_TOGGLE,
+        SET_CYCLE,
+        SET_ACTION,
+        SET_USB,
+        SET_SUBMENU
+    } SettingKind;
+
+    typedef struct {
+        SettingKind kind;
+        const char *label;
+        int divider_after;
+    } SettingRow;
+
+    static const SettingRow rows[] = {
+        { SET_TOGGLE,  "Auto FTP Download (PC)",     0 },
+        { SET_TOGGLE,  "Backup Compression (ZIP)", 0 },
+        { SET_TOGGLE,  "Integrity Check (MD5)",    1 },
+        { SET_CYCLE,   "Backup Profile",           0 },
+        { SET_ACTION,  "Start FTP Server",         1 },
+        { SET_USB,     "USB Mass Storage",         1 },
+        { SET_SUBMENU, "Advanced",                 0 },
     };
-    int states[] = { ftp_config.enabled, ftp_config.compression, ftp_config.checksum, 0, 0 };
 
-    for (int i = 0; i < 5; i++) {
+    static const char *help[] = {
+        "X: Toggle auto FTP server after backup (for download_backup.bat)",
+        "X: Toggle ZIP compression for backups",
+        "X: Toggle MD5 checksum generation",
+        "X: Cycle profile (NONE / MINIMAL / NORMAL / COMPLETE)",
+        "X: Start FTP server (port 1337)",
+        "X: Start or stop USB mass storage mode",
+        "X: Open advanced storage options",
+    };
+
+    const int row_count = (int)(sizeof(rows) / sizeof(rows[0]));
+    const int item_h = 40;
+    int y = 68;
+
+    for (int i = 0; i < row_count; i++) {
         if (i == selected) {
-            vita2d_draw_rectangle(10, y - 5, g_screen_w - 20, 35, COLOR_BG_SELECTED);
-        }
-        
-        if (i < 3) {
-            draw_checkbox(25, y + 5, states[i]);
-        } else if (i == 3) {
-            draw_text(25, y + 2, COLOR_ACCENT, 1.0f, "[CYC]");
-        } else if (i == 4) {
-            draw_text(25, y + 2, COLOR_ACCENT, 1.0f, "[RUN]");
+            vita2d_draw_rectangle(10, y - 4, g_screen_w - 20, item_h - 2, COLOR_BG_SELECTED);
         }
 
-        if (i == 3) {
-            snprintf(buf, sizeof(buf), "%s: [%s]", options[i], profile_names[current_profile]);
-            draw_text(170, y + 2, (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN, 1.0f, buf);
+        unsigned int label_color = (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN;
+
+        if (rows[i].kind == SET_TOGGLE) {
+            int on = (i == 0) ? ftp_config.enabled :
+                     (i == 1) ? ftp_config.compression :
+                                ftp_config.checksum;
+            draw_checkbox(20, y + 4, on);
+            draw_text(45, y + 4, label_color, 0.95f, rows[i].label);
+            const char *state = on ? "ON" : "OFF";
+            unsigned int state_color = on ? COLOR_GREEN : COLOR_TEXT_DIM;
+            int sw = text_width_at(state, 0.9f);
+            draw_text(g_screen_w - 20 - sw, y + 6, state_color, 0.9f, state);
         } else {
-            draw_text(170, y + 2, (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN, 1.0f, options[i]);
+            draw_text(20, y + 4, label_color, 0.95f, rows[i].label);
         }
-        
-        y += 45;
+
+        if (rows[i].kind == SET_CYCLE) {
+            snprintf(buf, sizeof(buf), "%s", profile_names[current_profile]);
+            int bw = text_width_at(buf, 0.9f);
+            draw_text(g_screen_w - 20 - bw, y + 6, COLOR_ACCENT, 0.9f, buf);
+        } else if (rows[i].kind == SET_USB) {
+            if (g_usb_active) {
+                const char *state = "ACTIVE";
+                int sw = text_width_at(state, 0.85f);
+                draw_text(g_screen_w - 20 - sw, y + 6, COLOR_GREEN, 0.85f, state);
+                draw_icon_stop(g_screen_w - 36 - sw, y + 4, COLOR_RED);
+            } else {
+                draw_icon_play(g_screen_w - 28, y + 4, COLOR_ACCENT);
+            }
+        } else if (rows[i].kind == SET_ACTION) {
+            draw_icon_play(g_screen_w - 28, y + 4, COLOR_ACCENT);
+        } else if (rows[i].kind == SET_SUBMENU) {
+            draw_icon_play(g_screen_w - 28, y + 4, COLOR_TEXT_DIM);
+        }
+
+        y += item_h;
+
+        if (rows[i].divider_after) {
+            vita2d_draw_rectangle(20, y - 6, g_screen_w - 40, 1, COLOR_BORDER);
+            y += 4;
+        }
     }
 
-    y += 20;
-    draw_text(25, y, COLOR_TEXT_DIM, 0.8f, "Current FTP Configuration:");
-    snprintf(buf, sizeof(buf), "%s:%d -> %s", ftp_config.host, ftp_config.port, ftp_config.remote_dir);
-    draw_text(25, y + 20, COLOR_ACCENT, 0.8f, buf);
+    y += 8;
+    draw_text(20, y, COLOR_TEXT_DIM, 0.75f, "PC download: use download_backup.bat with Vita IP, port 1337");
 
-    draw_panel(0, g_screen_h - 35, g_screen_w, 35, COLOR_BG_HEADER);
-    draw_text(15, g_screen_h - 26, COLOR_TEXT_DIM, 0.8f,
-              "▲/▼=Navigate  X=Change/Execute  O=Back");
+    draw_settings_footer((selected >= 0 && selected < row_count) ?
+        help[selected] : "▲/▼ Navigate   X Select   O Back");
+
+    vita2d_end_drawing();
+    vita2d_swap_buffers();
+}
+
+void draw_settings_advanced(int selected) {
+    vita2d_start_drawing();
+    vita2d_clear_screen();
+
+    draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
+    draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Advanced Storage");
+
+    static const char *labels[] = {
+        "Mount Gamecard to ux0:",
+        "Unmount Gamecard from ux0:",
+        "Mount USB (uma0:) to ux0:",
+        "Unmount USB from ux0:",
+    };
+
+    static const char *help[] = {
+        "X: Mount gamecard / SD2Vita as ux0:",
+        "X: Restore default ux0: mount",
+        "X: Mount uma0: USB drive as ux0:",
+        "X: Restore default ux0: mount",
+    };
+
+    const int row_count = 4;
+    const int item_h = 44;
+    int y = 80;
+
+    for (int i = 0; i < row_count; i++) {
+        if (i == selected) {
+            vita2d_draw_rectangle(10, y - 4, g_screen_w - 20, item_h - 2, COLOR_BG_SELECTED);
+        }
+
+        unsigned int label_color = (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN;
+        draw_text(20, y + 8, label_color, 0.95f, labels[i]);
+        draw_icon_play(g_screen_w - 28, y + 8, COLOR_ACCENT);
+        y += item_h;
+    }
+
+    draw_text(20, y + 20, COLOR_YELLOW, 0.8f,
+              "Warning: advanced options modify ux0: mount points.");
+
+    draw_settings_footer((selected >= 0 && selected < row_count) ?
+        help[selected] : "O: Back to settings");
 
     vita2d_end_drawing();
     vita2d_swap_buffers();

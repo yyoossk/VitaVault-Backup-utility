@@ -24,13 +24,13 @@
 #define CONFIG_PATH     "ux0:data/VitaVault/config.cfg"
 #define PATH_MAX_SIZE   1024
 #define MAX_BACKUPS     50
-#define MAX_ENTRIES     20
+#define MAX_ENTRIES     24
 #define MAX_LINE        512
 
 #define FTP_DEFAULT_HOST "192.168.1.100"
 #define FTP_DEFAULT_PORT 21
 #define FTP_DEFAULT_USER "anonymous"
-#define FTP_DEFAULT_PASS "vita@ftp"
+#define FTP_DEFAULT_PASS ""
 #define FTP_DEFAULT_DIR  "/VitaVault"
 
 typedef struct BackupEntry {
@@ -77,8 +77,8 @@ typedef struct {
     char pass[64];
     char remote_dir[256];
     int enabled;
-    int compression; // 0=Off, 1=Zip
-    int checksum;    // 0=Off, 1=MD5
+    int compression; 
+    int checksum;    
 } FTPConfig;
 
 
@@ -103,5 +103,8 @@ extern BackupInfo g_backups[MAX_BACKUPS];
 extern int g_backup_count;
 extern char g_last_backup_path[PATH_MAX_SIZE + 128];
 extern char g_last_log_path[PATH_MAX_SIZE + 128];
+
+// USB state
+extern int g_usb_active;
 
 #endif
