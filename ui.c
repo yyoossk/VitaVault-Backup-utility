@@ -111,7 +111,7 @@ static void draw_notification() {
         int w = tw + 40;
         int h = 35;
         int x = (g_screen_w - w) / 2;
-        int y = g_screen_h - 80; // Spostata in basso sopra la barra comandi per evitare overlap
+        int y = g_screen_h - 80; 
         draw_panel(x, y, w, h, COLOR_BG_HEADER);
         draw_text(x + 20, y + 6, COLOR_YELLOW, 0.9f, g_notification_msg);
     }
@@ -832,20 +832,16 @@ void draw_settings_advanced(int selected) {
     draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Advanced Storage");
 
     static const char *labels[] = {
-        "Mount Gamecard to ux0:",
-        "Unmount Gamecard from ux0:",
-        "Mount USB (uma0:) to ux0:",
-        "Unmount USB from ux0:",
+        "Delete Logs:",
+        "Reset Settings:",
     };
 
     static const char *help[] = {
-        "X: Mount gamecard / SD2Vita as ux0:",
-        "X: Restore default ux0: mount",
-        "X: Mount uma0: USB drive as ux0:",
-        "X: Restore default ux0: mount",
+        "X: Delete all log files",
+        "X: Reset to default settings",
     };
 
-    const int row_count = 4;
+    const int row_count = 2;
     const int item_h = 44;
     int y = 80;
 

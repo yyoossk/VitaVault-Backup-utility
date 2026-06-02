@@ -126,7 +126,7 @@ void build_backup_root(char *out, int size) {
 SceOff get_free_space(const char *path) {
     SceIoDevInfo info;
     memset(&info, 0, sizeof(info));
-    int ret = sceIoDevctl(path, 0x3000003, NULL, 0, &info, sizeof(info));
+    int ret = sceIoDevctl(path, 0x3001, NULL, 0, &info, sizeof(info));
     if (ret < 0) return 0;
     return info.free_size;
 }
@@ -1063,4 +1063,50 @@ int list_backups(BackupInfo *backups, int max) {
         count++;
     }
     return count;
+}
+
+int delete_logs(void) {
+    char log_dir[PATH_MAX_SIZE + 64];
+    snprintf(log_dir, sizeof(log_dir), "%s/logs", g_backup_root);
+
+    SceUID dir = sceIoDopen(log_dir);
+    if (dir < 0) {
+        return 0;
+    }
+
+    int deleted = 0;
+    SceIoDirent ent;
+    memset(&ent, 0, sizeof(ent));
+    while (sceIoDread(dir, &ent) > 0) {
+        if (strcmp(ent.d_name, ".") == 0 || strcmp(ent.d_name, "..") == 0) {
+            memset(&ent, 0, sizeof(ent));
+            continue;
+        }
+        char file_path[PATH_MAX_SIZE + 512];
+        snprintf(file_path, sizeof(file_path), "%s/%s", log_dir, ent.d_name);
+        if (sceIoRemove(file_path) >= 0) {
+            deleted++;
+        }
+        memset(&ent, 0, sizeof(ent));
+    }
+    sceIoDclose(dir);
+    return deleted;
+}
+
+int reset_config(void) {
+    current_profile = PROFILE_NONE;
+    for (int i = 0; i < ENTRY_COUNT; i++) {
+        entries[i].enabled = 0;
+    }
+    strcpy(g_backup_root, "ux0:data/VitaVault");
+    ftp_config.enabled = 0;
+    ftp_config.compression = 0;
+    ftp_config.checksum = 0;
+    strcpy(ftp_config.host, FTP_DEFAULT_HOST);
+    ftp_config.port = FTP_DEFAULT_PORT;
+    strcpy(ftp_config.user, FTP_DEFAULT_USER);
+    strcpy(ftp_config.pass, FTP_DEFAULT_PASS);
+    strcpy(ftp_config.remote_dir, FTP_DEFAULT_DIR);
+    save_config();
+    return 0;
 }

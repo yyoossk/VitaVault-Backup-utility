@@ -299,7 +299,7 @@ int main() {
         }
 
         
-        // SELECT (da solo): Apre Impostazioni
+        
         if ((pad.buttons & SCE_CTRL_SELECT) && !(pad.buttons & SCE_CTRL_SQUARE) && 
             !(pad.buttons & SCE_CTRL_TRIANGLE) && !(pad.buttons & SCE_CTRL_DOWN)) {
             sceKernelDelayThread(200000);
@@ -383,24 +383,15 @@ int main() {
                         }
                     } else {
                         if (set_sel == 0) {
-                            int res = mountGamecardUx0();
-                            ui_set_notification(res == 0 ?
-                                "Gamecard mounted to ux0:" : "Failed to mount gamecard!");
+                            int deleted = delete_logs();
+                            char msg[64];
+                            snprintf(msg, sizeof(msg), "Deleted %d log files", deleted);
+                            ui_set_notification(msg);
                             sceKernelDelayThread(200000);
                         } else if (set_sel == 1) {
-                            int res = umountGamecardUx0();
+                            int res = reset_config();
                             ui_set_notification(res == 0 ?
-                                "Gamecard unmounted from ux0:" : "Failed to unmount gamecard!");
-                            sceKernelDelayThread(200000);
-                        } else if (set_sel == 2) {
-                            int res = mountUsbUx0();
-                            ui_set_notification(res == 0 ?
-                                "USB mounted to ux0:" : "Failed to mount USB!");
-                            sceKernelDelayThread(200000);
-                        } else if (set_sel == 3) {
-                            int res = umountUsbUx0();
-                            ui_set_notification(res == 0 ?
-                                "USB unmounted from ux0:" : "Failed to unmount USB!");
+                                "Settings reset" : "Reset failed");
                             sceKernelDelayThread(200000);
                         }
                     }
@@ -421,7 +412,7 @@ int main() {
             continue;
         }
 
-        // SELECT + GIU: Cicla Profili (veloce)
+        
         if ((pad.buttons & SCE_CTRL_SELECT) && (pad.buttons & SCE_CTRL_DOWN)) {
             cycle_profile();
             ui_set_notification("Profile changed!");
@@ -429,7 +420,7 @@ int main() {
             continue;
         }
 
-        // START: Server FTP Immediato
+        
         if (pad.buttons & SCE_CTRL_START) {
             sceKernelDelayThread(200000);
             ftp_server_run();

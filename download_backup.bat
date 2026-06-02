@@ -155,7 +155,7 @@ echo.
 echo Copying backup folders from USB (skips module/logs) ...
 for /d %%D in ("%VITA_DRIVE%:\%USB_REL_PATH%\*") do (
     set "FOLDER=%%~nxD"
-    echo !FOLDER! | findstr /R "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9]$" >nul
+    echo !FOLDER! | findstr /R "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]" >nul
     if !ERRORLEVEL! equ 0 (
         echo Copying !FOLDER! ...
         xcopy /E /I /H /Y "%%D" "%LOCAL_DIR%\!FOLDER!\"

@@ -44,4 +44,7 @@ int load_config();
 void apply_profile(ProfileType profile);
 void cycle_profile();
 
+int delete_logs(void);
+int reset_config(void);
+
 #endif
