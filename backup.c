@@ -50,6 +50,8 @@ FTPConfig ftp_config;
 BackupInfo g_backups[MAX_BACKUPS];
 int g_backup_count = 0;
 char g_last_backup_path[PATH_MAX_SIZE + 128] = "";
+char g_preferred_usb_device[64] = "";
+char g_preferred_usb_name[64] = "";
 char g_last_log_path[PATH_MAX_SIZE + 128] = "";
 
 const char *profile_names[] = { "NONE", "MINIMAL", "NORMAL", "COMPLETE" };
@@ -539,10 +541,13 @@ void save_config() {
         "ftp_enabled=%d\n"
         "compression=%d\n"
         "checksum=%d\n"
+        "preferred_usb_device=%s\n"
+        "preferred_usb_name=%s\n"
         "# Entry states\n",
         (int)current_profile, g_backup_root,
         ftp_config.enabled,
-        ftp_config.compression, ftp_config.checksum);
+        ftp_config.compression, ftp_config.checksum,
+        g_preferred_usb_device, g_preferred_usb_name);
     sceIoWrite(fd, buf, n);
 
     for (int i = 0; i < ENTRY_COUNT; i++) {
@@ -561,6 +566,8 @@ int load_config() {
     ftp_config.enabled = 0;
     ftp_config.compression = 0;
     ftp_config.checksum = 0;
+    g_preferred_usb_device[0] = '\0';
+    g_preferred_usb_name[0] = '\0';
 
     SceUID fd = sceIoOpen(CONFIG_PATH, SCE_O_RDONLY, 0);
     if (fd < 0) {
@@ -584,6 +591,10 @@ int load_config() {
                 if (p >= 0 && p <= 3) current_profile = (ProfileType)p;
             } else if (strncmp(line, "backup_root=", 12) == 0) {
                 strncpy(g_backup_root, line + 12, PATH_MAX_SIZE - 1);
+            } else if (strncmp(line, "preferred_usb_device=", 21) == 0) {
+                strncpy(g_preferred_usb_device, line + 21, sizeof(g_preferred_usb_device) - 1);
+            } else if (strncmp(line, "preferred_usb_name=", 20) == 0) {
+                strncpy(g_preferred_usb_name, line + 20, sizeof(g_preferred_usb_name) - 1);
             } else if (strncmp(line, "ftp_enabled=", 12) == 0)
                 ftp_config.enabled = atoi(line + 12);
             else if (strncmp(line, "ftp_host=", 9) == 0)

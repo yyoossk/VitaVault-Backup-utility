@@ -748,7 +748,8 @@ void draw_settings(int selected) {
         { SET_TOGGLE,  "Integrity Check (MD5)",    1 },
         { SET_CYCLE,   "Backup Profile",           0 },
         { SET_ACTION,  "Start FTP Server",         1 },
-        { SET_USB,     "USB Mass Storage",         1 },
+        { SET_USB,     "USB Mass Storage",         0 },
+        { SET_ACTION,  "USB Device Preference",    1 },
         { SET_SUBMENU, "Advanced",                 0 },
     };
 
@@ -759,6 +760,7 @@ void draw_settings(int selected) {
         "X: Cycle profile (NONE / MINIMAL / NORMAL / COMPLETE)",
         "X: Start FTP server (port 1337)",
         "X: Start or stop USB mass storage mode",
+        "X: Select preferred USB device for quick access",
         "X: Open advanced storage options",
     };
 
@@ -799,6 +801,17 @@ void draw_settings(int selected) {
                 draw_icon_stop(g_screen_w - 36 - sw, y + 4, COLOR_RED);
             } else {
                 draw_icon_play(g_screen_w - 28, y + 4, COLOR_ACCENT);
+            }
+        } else if (i == 6) {
+            extern char g_preferred_usb_name[64];
+            draw_icon_play(g_screen_w - 28, y + 4, COLOR_ACCENT);
+            if (g_preferred_usb_name[0] != '\0') {
+                int sw = text_width_at(g_preferred_usb_name, 0.75f);
+                draw_text(g_screen_w - 36 - sw, y + 6, COLOR_ACCENT, 0.75f, g_preferred_usb_name);
+            } else {
+                const char *state = "Not Set";
+                int sw = text_width_at(state, 0.75f);
+                draw_text(g_screen_w - 36 - sw, y + 6, COLOR_TEXT_DIM, 0.75f, state);
             }
         } else if (rows[i].kind == SET_ACTION) {
             draw_icon_play(g_screen_w - 28, y + 4, COLOR_ACCENT);
@@ -864,4 +877,99 @@ void draw_settings_advanced(int selected) {
 
     vita2d_end_drawing();
     vita2d_swap_buffers();
+}
+
+typedef struct {
+    const char *name;
+    const char *path;
+} StorageDevice;
+
+int draw_storage_selection_menu(const char *devices[], const char *paths[], int count) {
+    if (count <= 0) return -1;
+
+    SceCtrlData pad, old_pad;
+    int selected = 0;
+    int running = 1;
+    int frame_count = 0;
+
+    sceCtrlPeekBufferPositive(0, &old_pad, 1);
+
+    while (running) {
+        vita2d_start_drawing();
+        vita2d_clear_screen();
+
+        draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
+        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "Select USB Storage Device");
+
+        draw_text(20, 70, COLOR_TEXT_DIM, 0.9f, "Choose which storage to mount via USB:");
+
+        int list_y = 100;
+        int item_h = 40;
+        int visible = (g_screen_h - list_y - 50) / item_h;
+        int start = selected - visible / 2;
+        if (start < 0) start = 0;
+        if (start + visible > count) start = count - visible;
+        if (start < 0) start = 0;
+
+        for (int i = 0; i < visible && (start + i) < count; i++) {
+            int idx = start + i;
+            int y = list_y + i * item_h;
+
+            if (idx == selected) {
+                vita2d_draw_rectangle(10, y - 4, g_screen_w - 20, item_h - 2, COLOR_BG_SELECTED);
+            }
+
+            unsigned int label_color = (idx == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN;
+            draw_text(25, y + 8, label_color, 1.0f, devices[idx]);
+            draw_text(g_screen_w - 20 - text_width_at(paths[idx], 0.75f), y + 10, COLOR_TEXT_DIM, 0.75f, paths[idx]);
+        }
+
+        if (count > visible) {
+            draw_scrollbar(count, visible, selected, g_screen_w - 8, list_y, visible * item_h);
+        }
+
+        draw_panel(0, g_screen_h - 35, g_screen_w, 35, COLOR_BG_HEADER);
+        draw_text(15, g_screen_h - 26, COLOR_TEXT_DIM, 0.8f, "▲/▼ Navigate  X=Select  O=Cancel");
+
+        vita2d_end_drawing();
+        vita2d_swap_buffers();
+
+        sceCtrlPeekBufferPositive(0, &pad, 1);
+        sceKernelDelayThread(16000);
+
+        frame_count++;
+
+        unsigned int new_buttons = pad.buttons & ~old_pad.buttons;
+
+        if (new_buttons & SCE_CTRL_UP) {
+            selected--;
+            if (selected < 0) selected = count - 1;
+            sceKernelDelayThread(150000);
+        }
+        if (new_buttons & SCE_CTRL_DOWN) {
+            selected++;
+            if (selected >= count) selected = 0;
+            sceKernelDelayThread(150000);
+        }
+        if (new_buttons & SCE_CTRL_CROSS) {
+            sceKernelDelayThread(150000);
+            return selected;
+        }
+        if (new_buttons & SCE_CTRL_CIRCLE) {
+            sceKernelDelayThread(150000);
+            return -1;
+        }
+        if (new_buttons & SCE_CTRL_TRIANGLE) {
+            sceKernelDelayThread(150000);
+            return -1;
+        }
+        if (new_buttons & SCE_CTRL_START) {
+            sceKernelDelayThread(150000);
+            return -1;
+        }
+
+        old_pad = pad;
+    }
+
+    return -1;
 }

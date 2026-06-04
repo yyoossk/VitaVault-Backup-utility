@@ -36,12 +36,14 @@ extern SceUID g_usb_modid;
 
 SceUID startUsb(const char *usbDevicePath, const char *imgFilePath, int type);
 int stopUsb(SceUID modid);
+int checkFolderExist(const char *path);
 
 
 void usb_init(void);
 
 
 int usb_start_mass_storage(void);
+int usb_start_mass_storage_with_device(const char *device_path);
 int usb_stop_mass_storage(void);
 
 // Mount/Unmount functions (from VitaShell)

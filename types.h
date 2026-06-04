@@ -106,5 +106,7 @@ extern char g_last_log_path[PATH_MAX_SIZE + 128];
 
 // USB state
 extern int g_usb_active;
+extern char g_preferred_usb_device[64];
+extern char g_preferred_usb_name[64];
 
 #endif

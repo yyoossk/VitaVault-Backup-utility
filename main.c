@@ -312,7 +312,7 @@ int main() {
                 else
                     draw_settings_advanced(set_sel);
 
-                int set_max = (set_mode == 0) ? 6 : 3;
+                int set_max = (set_mode == 0) ? 7 : 3;
                 sceCtrlPeekBufferPositive(0, &pad, 1);
                 
                 if (pad.buttons & SCE_CTRL_UP) {
@@ -330,8 +330,13 @@ int main() {
                         else if (set_sel == 2) ftp_config.checksum = !ftp_config.checksum;
                         else if (set_sel == 3) cycle_profile();
                         else if (set_sel == 4) {
-                            ftp_server_run();
-                            sceKernelDelayThread(200000);
+                            if (g_usb_active) {
+                                ui_set_notification("Stop USB first");
+                                sceKernelDelayThread(200000);
+                            } else {
+                                ftp_server_run();
+                                sceKernelDelayThread(200000);
+                            }
                         } else if (set_sel == 5) {
                             if (g_usb_active) {
                                 int res = usb_stop_mass_storage();
@@ -341,42 +346,172 @@ int main() {
                                     ui_set_notification("USB Error stopping!");
                                 }
                             } else {
-                                int res = usb_start_mass_storage();
-                                if (res == 0) {
-                                    int usb_loop = 1;
-                                    while (usb_loop) {
-                                        vita2d_start_drawing();
-                                        vita2d_clear_screen();
-                                        draw_panel(0, 0, 960, 55, COLOR_BG_HEADER);
-                                        draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "USB Mass Storage");
-                                        draw_text(30, 150, COLOR_ACCENT, 1.2f, "USB Connected to PC");
-                                        draw_text(30, 200, COLOR_TEXT_MAIN, 1.0f, "Do not disconnect the cable during transfer.");
-                                        draw_text(30, 450, COLOR_TEXT_DIM, 0.8f, "Press CIRCLE to disconnect.");
-                                        vita2d_end_drawing();
-                                        vita2d_swap_buffers();
+                                if (g_ftp_active) {
+                                    ui_set_notification("Stop FTP first");
+                                    sceKernelDelayThread(200000);
+                                } else if (g_preferred_usb_device[0] != '\0') {
+                                    int res = usb_start_mass_storage_with_device(g_preferred_usb_device);
+                                    if (res == 0) {
+                                        int usb_loop = 1;
+                                        while (usb_loop) {
+                                            vita2d_start_drawing();
+                                            vita2d_clear_screen();
+                                            draw_panel(0, 0, 960, 55, COLOR_BG_HEADER);
+                                            draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "USB Mass Storage");
+                                            draw_text(30, 120, COLOR_ACCENT, 1.2f, "USB Connected to PC");
+                                            draw_text(30, 160, COLOR_TEXT_MAIN, 1.0f, "Device:");
+                                            draw_text(30, 190, COLOR_ACCENT, 1.0f, g_preferred_usb_name[0] != '\0' ? g_preferred_usb_name : g_preferred_usb_device);
+                                            draw_text(30, 240, COLOR_TEXT_MAIN, 1.0f, "Do not disconnect the cable during transfer.");
+                                            draw_text(30, 450, COLOR_TEXT_DIM, 0.8f, "Press CIRCLE to disconnect.");
+                                            vita2d_end_drawing();
+                                            vita2d_swap_buffers();
 
-                                        sceCtrlPeekBufferPositive(0, &pad, 1);
-                                        if (pad.buttons & SCE_CTRL_CIRCLE) {
-                                            usb_stop_mass_storage();
-                                            usb_loop = 0;
+                                            sceCtrlPeekBufferPositive(0, &pad, 1);
+                                            if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                                usb_stop_mass_storage();
+                                                usb_loop = 0;
+                                            }
+                                            sceKernelDelayThread(16000);
                                         }
-                                        sceKernelDelayThread(16000);
+                                    } else {
+                                        char err_msg[64];
+                                        if (res == (int)0x80800001)
+                                            snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
+                                        else if (res == (int)0x80800002)
+                                            snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
+                                        else if (res < 0)
+                                            snprintf(err_msg, sizeof(err_msg), "Memory not found");
+                                        else
+                                            snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                                        ui_set_notification(err_msg);
                                     }
                                 } else {
-                                    char err_msg[64];
-                                    if (res == (int)0x80800001)
-                                        snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
-                                    else if (res == (int)0x80800002)
-                                        snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
-                                    else if (res == (int)0x80800003)
-                                        snprintf(err_msg, sizeof(err_msg), "Storage device not found");
-                                    else
-                                        snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
-                                    ui_set_notification(err_msg);
+                                    const char *device_names[8];
+                                    const char *device_paths[8];
+                                    int device_count = 0;
+
+                                    device_names[device_count] = "PS Vita Memory (ux0)";
+                                    device_paths[device_count] = "sdstor0:xmc-lp-ign-userext";
+                                    device_count++;
+
+                                    if (checkFolderExist("ux0:data/sd2vita.txt")) {
+                                        device_names[device_count] = "SD2VITA (Game Card)";
+                                        device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                                        device_count++;
+                                    }
+
+                                    if (checkFolderExist("xmc0:")) {
+                                        device_names[device_count] = "Memory Card (xmc0)";
+                                        device_paths[device_count] = "sdstor0:xmc-lp-ign-userext";
+                                        device_count++;
+                                    }
+
+                                    if (checkFolderExist("imc0:")) {
+                                        device_names[device_count] = "Internal Memory (imc0)";
+                                        device_paths[device_count] = "sdstor0:int-lp-ign-userext";
+                                        device_count++;
+                                    }
+
+                                    if (checkFolderExist("uma0:")) {
+                                        device_names[device_count] = "USB Storage (uma0)";
+                                        device_paths[device_count] = "sdstor0:uma-lp-act-entire";
+                                        device_count++;
+                                    }
+
+                                    if (checkFolderExist("grw0:")) {
+                                        device_names[device_count] = "Game Card (grw0)";
+                                        device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                                        device_count++;
+                                    }
+
+                                    if (device_count == 0) {
+                                        ui_set_notification("No storage devices found!");
+                                        sceKernelDelayThread(200000);
+                                    } else {
+                                        int selected = draw_storage_selection_menu(device_names, device_paths, device_count);
+                                        if (selected >= 0) {
+                                            int res = usb_start_mass_storage_with_device(device_paths[selected]);
+                                            if (res == 0) {
+                                                int usb_loop = 1;
+                                                while (usb_loop) {
+                                                    vita2d_start_drawing();
+                                                    vita2d_clear_screen();
+                                                    draw_panel(0, 0, 960, 55, COLOR_BG_HEADER);
+                                                    draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, "USB Mass Storage");
+                                                    draw_text(30, 120, COLOR_ACCENT, 1.2f, "USB Connected to PC");
+                                                    draw_text(30, 160, COLOR_TEXT_MAIN, 1.0f, "Device:");
+                                                    draw_text(30, 190, COLOR_ACCENT, 1.0f, device_names[selected]);
+                                                    draw_text(30, 240, COLOR_TEXT_MAIN, 1.0f, "Do not disconnect the cable during transfer.");
+                                                    draw_text(30, 450, COLOR_TEXT_DIM, 0.8f, "Press CIRCLE to disconnect.");
+                                                    vita2d_end_drawing();
+                                                    vita2d_swap_buffers();
+
+                                                    sceCtrlPeekBufferPositive(0, &pad, 1);
+                                                    if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                                        usb_stop_mass_storage();
+                                                        usb_loop = 0;
+                                                    }
+                                                    sceKernelDelayThread(16000);
+                                                }
+                                            } else {
+                                                char err_msg[64];
+                                                if (res == (int)0x80800001)
+                                                    snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
+                                                else if (res == (int)0x80800002)
+                                                    snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
+                                                else
+                                                    snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                                                ui_set_notification(err_msg);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             sceKernelDelayThread(200000);
                         } else if (set_sel == 6) {
+                            const char *device_names[8];
+                            const char *device_paths[8];
+                            int device_count = 0;
+
+                            device_names[device_count] = "Memory Card";
+                            device_paths[device_count] = "sdstor0:xmc-lp-ign-userext";
+                            device_count++;
+
+                            device_names[device_count] = "SD2VITA";
+                            device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                            device_count++;
+
+                            device_names[device_count] = "PSVSD";
+                            device_paths[device_count] = "sdstor0:uma-lp-act-entire";
+                            device_count++;
+
+                            device_names[device_count] = "Game Card";
+                            device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                            device_count++;
+
+                            device_names[device_count] = "Auto-select (ask each time)";
+                            device_paths[device_count] = "";
+                            device_count++;
+
+                            int selected = draw_storage_selection_menu(device_names, device_paths, device_count);
+                            if (selected >= 0) {
+                                if (selected == device_count - 1) {
+                                    g_preferred_usb_device[0] = '\0';
+                                    g_preferred_usb_name[0] = '\0';
+                                    ui_set_notification("USB preference: Auto-select");
+                                } else {
+                                    strncpy(g_preferred_usb_device, device_paths[selected], sizeof(g_preferred_usb_device) - 1);
+                                    g_preferred_usb_device[sizeof(g_preferred_usb_device) - 1] = '\0';
+                                    strncpy(g_preferred_usb_name, device_names[selected], sizeof(g_preferred_usb_name) - 1);
+                                    g_preferred_usb_name[sizeof(g_preferred_usb_name) - 1] = '\0';
+                                    char msg[128];
+                                    snprintf(msg, sizeof(msg), "USB preference: %s", device_names[selected]);
+                                    ui_set_notification(msg);
+                                }
+                                save_config();
+                            }
+                            sceKernelDelayThread(200000);
+                        } else if (set_sel == 7) {
                             set_mode = 1;
                             set_sel = 0;
                             sceKernelDelayThread(150000);
@@ -576,6 +711,20 @@ int main() {
         if (pad.buttons & SCE_CTRL_CROSS) {
             sceKernelDelayThread(150000);
 
+            int active = 0;
+            for (int i = 0; i < ENTRY_COUNT; i++)
+                if (entries[i].enabled) active++;
+
+            if (active == 0) {
+                draw_text_screen("No Entries Selected",
+                    "No backup entries are enabled.\n\n"
+                    "Press CIRCLE to enable entries with O button,\n"
+                    "then press X to start backup.\n\n"
+                    "Press any button to continue.");
+                sceKernelDelayThread(2000000);
+                continue;
+            }
+
             if (!draw_confirm_screen("Confirm Backup",
                 "Are you sure you want to start the backup?")) {
                 continue;
@@ -635,48 +784,130 @@ int main() {
                     if (pad.buttons & SCE_CTRL_SQUARE) {
                         sceKernelDelayThread(150000);
 
-                        int res = usb_start_mass_storage();
-                        if (res == 0) {
-                            const char *folder = strrchr(backup_root, '/');
-                            if (folder) folder++;
-                            else {
-                                folder = strrchr(backup_root, ':');
-                                folder = folder ? folder + 1 : backup_root;
-                            }
-
-                            char folder_name_display[64];
-                            strncpy(folder_name_display, folder, sizeof(folder_name_display) - 1);
-                            folder_name_display[sizeof(folder_name_display) - 1] = '\0';
-
-                            char usb_msg[512];
-                            snprintf(usb_msg, sizeof(usb_msg),
-                                "USB Mass Storage active.\n\n"
-                                "On PC open the Vita drive:\n"
-                                "data\\VitaVault\\%s\n\n"
-                                "Use download_backup.bat option 5,\n"
-                                "or copy the folder manually.\n\n"
-                                "Press O to disconnect USB.",
-                                folder_name_display);
-
-                            int usb_loop = 1;
-                            while (usb_loop) {
-                                draw_text_screen("USB Transfer to PC", usb_msg);
-                                sceCtrlPeekBufferPositive(0, &pad, 1);
-                                sceKernelDelayThread(10000);
-                                if (pad.buttons & SCE_CTRL_CIRCLE) {
-                                    usb_stop_mass_storage();
-                                    usb_loop = 0;
-                                    sceKernelDelayThread(150000);
+                        if (g_preferred_usb_device[0] != '\0') {
+                            int res = usb_start_mass_storage_with_device(g_preferred_usb_device);
+                            if (res == 0) {
+                                const char *folder = strrchr(backup_root, '/');
+                                if (folder) folder++;
+                                else {
+                                    folder = strrchr(backup_root, ':');
+                                    folder = folder ? folder + 1 : backup_root;
                                 }
+
+                                char folder_name_display[64];
+                                strncpy(folder_name_display, folder, sizeof(folder_name_display) - 1);
+                                folder_name_display[sizeof(folder_name_display) - 1] = '\0';
+
+                                char usb_msg[512];
+                                snprintf(usb_msg, sizeof(usb_msg),
+                                    "USB Mass Storage active.\n\n"
+                                    "Device: %s\n\n"
+                                    "On PC open the Vita drive:\n"
+                                    "data/VitaVault/%s\n\n"
+                                    "Use download_backup.bat option 5,\n"
+                                    "or copy the folder manually.\n\n"
+                                    "Press O to disconnect USB.",
+                                    g_preferred_usb_name[0] != '\0' ? g_preferred_usb_name : g_preferred_usb_device, folder_name_display);
+
+                                int usb_loop = 1;
+                                while (usb_loop) {
+                                    draw_text_screen("USB Transfer to PC", usb_msg);
+                                    sceCtrlPeekBufferPositive(0, &pad, 1);
+                                    sceKernelDelayThread(10000);
+                                    if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                        usb_stop_mass_storage();
+                                        usb_loop = 0;
+                                        sceKernelDelayThread(150000);
+                                    }
+                                }
+                            } else {
+                                char err_msg[64];
+                                if (res == (int)0x80800001)
+                                    snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
+                                else if (res == (int)0x80800002)
+                                    snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
+                                else if (res < 0)
+                                    snprintf(err_msg, sizeof(err_msg), "Memory not found");
+                                else
+                                    snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                                ui_set_notification(err_msg);
+                                sceKernelDelayThread(300000);
                             }
                         } else {
-                            char err_msg[64];
-                            if (res == (int)0x80800003)
-                                snprintf(err_msg, sizeof(err_msg), "Storage device not found");
-                            else
-                                snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
-                            ui_set_notification(err_msg);
-                            sceKernelDelayThread(300000);
+                            const char *device_names[8];
+                            const char *device_paths[8];
+                            int device_count = 0;
+
+                            device_names[device_count] = "Memory Card";
+                            device_paths[device_count] = "sdstor0:xmc-lp-ign-userext";
+                            device_count++;
+
+                            device_names[device_count] = "SD2VITA";
+                            device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                            device_count++;
+
+                            device_names[device_count] = "PSVSD";
+                            device_paths[device_count] = "sdstor0:uma-lp-act-entire";
+                            device_count++;
+
+                            device_names[device_count] = "Game Card";
+                            device_paths[device_count] = "sdstor0:gcd-lp-ign-entire";
+                            device_count++;
+
+                            if (device_count == 0) {
+                                ui_set_notification("No storage devices found!");
+                                sceKernelDelayThread(300000);
+                            } else {
+                                int selected = draw_storage_selection_menu(device_names, device_paths, device_count);
+                                if (selected >= 0) {
+                                    int res = usb_start_mass_storage_with_device(device_paths[selected]);
+                                    if (res == 0) {
+                                        const char *folder = strrchr(backup_root, '/');
+                                        if (folder) folder++;
+                                        else {
+                                            folder = strrchr(backup_root, ':');
+                                            folder = folder ? folder + 1 : backup_root;
+                                        }
+
+                                        char folder_name_display[64];
+                                        strncpy(folder_name_display, folder, sizeof(folder_name_display) - 1);
+                                        folder_name_display[sizeof(folder_name_display) - 1] = '\0';
+
+                                        char usb_msg[512];
+                                        snprintf(usb_msg, sizeof(usb_msg),
+                                            "USB Mass Storage active.\n\n"
+                                            "Device: %s\n\n"
+                                            "On PC open the Vita drive:\n"
+                                            "data\\VitaVault\\%s\n\n"
+                                            "Use download_backup.bat option 5,\n"
+                                            "or copy the folder manually.\n\n"
+                                            "Press O to disconnect USB.",
+                                            device_names[selected], folder_name_display);
+
+                                        int usb_loop = 1;
+                                        while (usb_loop) {
+                                            draw_text_screen("USB Transfer to PC", usb_msg);
+                                            sceCtrlPeekBufferPositive(0, &pad, 1);
+                                            sceKernelDelayThread(10000);
+                                            if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                                usb_stop_mass_storage();
+                                                usb_loop = 0;
+                                                sceKernelDelayThread(150000);
+                                            }
+                                        }
+                                    } else {
+                                        char err_msg[64];
+                                        if (res == (int)0x80800001)
+                                            snprintf(err_msg, sizeof(err_msg), "USB modules missing in VPK");
+                                        else if (res == (int)0x80800002)
+                                            snprintf(err_msg, sizeof(err_msg), "USB module copy failed");
+                                        else
+                                            snprintf(err_msg, sizeof(err_msg), "USB Error: 0x%08X", res);
+                                        ui_set_notification(err_msg);
+                                        sceKernelDelayThread(300000);
+                                    }
+                                }
+                            }
                         }
                     }
 

@@ -97,7 +97,7 @@ static int start_kernel_module(const char *path, const char *search_name, SceUID
 }
 
 
-static int checkFolderExist(const char *path) {
+int checkFolderExist(const char *path) {
     SceUID dfd = sceIoDopen(path);
     if (dfd >= 0) {
         sceIoDclose(dfd);
@@ -139,16 +139,23 @@ static int copyFile(const char *src, const char *dst) {
 }
 
 static int install_usb_modules(void) {
-    if (checkFileExist("ux0:data/VitaVault/module/kernel.skprx") &&
-        checkFileExist("ux0:data/VitaVault/module/umass.skprx") &&
-        checkFileExist("ux0:VitaShell/module/umass.skprx"))
+    // Check if modules are already installed
+    int kernel_exists = checkFileExist("ux0:data/VitaVault/module/kernel.skprx");
+    int umass_exists = checkFileExist("ux0:data/VitaVault/module/umass.skprx");
+    int vitashell_umass_exists = checkFileExist("ux0:VitaShell/module/umass.skprx");
+
+    
+    if (kernel_exists && umass_exists && vitashell_umass_exists)
         return 0;
 
+    // Try to install from app0:module/
     sceIoMkdir("ux0:data", 0777);
     sceIoMkdir("ux0:data/VitaVault", 0777);
     sceIoMkdir("ux0:data/VitaVault/module", 0777);
     sceIoMkdir("ux0:VitaShell", 0777);
     sceIoMkdir("ux0:VitaShell/module", 0777);
+
+    int modules_installed = 0;
 
     for (int i = 0; USB_MODULE_FILES[i]; i++) {
         char src[256];
@@ -156,16 +163,34 @@ static int install_usb_modules(void) {
         snprintf(src, sizeof(src), "app0:module/%s", USB_MODULE_FILES[i]);
         snprintf(dst, sizeof(dst), "%s%s", USB_MODULE_DIR, USB_MODULE_FILES[i]);
 
-        if (!checkFileExist(src))
-            return 0x80800001;
+        // Skip if already exists
+        if (checkFileExist(dst)) {
+            modules_installed++;
+            continue;
+        }
+
+        if (!checkFileExist(src)) {
+            
+            continue;
+        }
 
         if (copyFile(src, dst) < 0)
             return 0x80800002;
 
+        modules_installed++;
+
         if (strcmp(USB_MODULE_FILES[i], "umass.skprx") == 0) {
-            if (copyFile(src, "ux0:VitaShell/module/umass.skprx") < 0)
-                return 0x80800002;
+            if (!vitashell_umass_exists) {
+                if (copyFile(src, "ux0:VitaShell/module/umass.skprx") < 0)
+                    return 0x80800002;
+            }
         }
+    }
+
+    
+    if (!checkFileExist("ux0:data/VitaVault/module/kernel.skprx") ||
+        !checkFileExist("ux0:data/VitaVault/module/umass.skprx")) {
+        return 0x80800001;
     }
 
     return 0;
@@ -238,12 +263,12 @@ SceUID startUsb(const char *usbDevicePath, const char *imgFilePath, int type) {
     if (res < 0 && res != 0x8054360C)
         goto ERROR_STOP_DRIVER;
 
-    // Set device information
+    
     res = sceUsbstorVStorSetDeviceInfo("\"PS Vita\" MC", "1.00");
     if (res < 0)
         goto ERROR_USBSTOR_VSTOR;
 
-    // Set image file path
+    
     res = sceUsbstorVStorSetImgFilePath(imgFilePath);
     if (res < 0)
         goto ERROR_USBSTOR_VSTOR;
@@ -392,12 +417,9 @@ static int load_usb_modules(void) {
     return 0;
 }
 
-int usb_start_mass_storage(void) {
+int usb_start_mass_storage_with_device(const char *device_path) {
     char modulePath[256];
-    const char *candidates[8];
     int res;
-    int nc;
-    int last_err = 0x80800003;
 
     if (g_usb_active)
         return 0;
@@ -408,18 +430,31 @@ int usb_start_mass_storage(void) {
 
     snprintf(modulePath, sizeof(modulePath), "%susbdevice.skprx", USB_MODULE_DIR);
 
+    SceUID modid = startUsb(modulePath, device_path, USBSTOR_TYPE_FAT);
+    if (modid >= 0) {
+        g_usb_modid = modid;
+        g_usb_active = 1;
+        return 0;
+    }
+
+    return modid;
+}
+
+int usb_start_mass_storage(void) {
+    const char *candidates[8];
+    int nc;
+    int last_err = 0x80800003;
+
     nc = build_storage_candidates(candidates, 8);
     if (nc == 0)
         return 0x80800003;
 
     for (int i = 0; i < nc; i++) {
-        SceUID modid = startUsb(modulePath, candidates[i], USBSTOR_TYPE_FAT);
-        if (modid >= 0) {
-            g_usb_modid = modid;
-            g_usb_active = 1;
+        int res = usb_start_mass_storage_with_device(candidates[i]);
+        if (res == 0) {
             return 0;
         }
-        last_err = modid;
+        last_err = res;
     }
 
     return last_err;
