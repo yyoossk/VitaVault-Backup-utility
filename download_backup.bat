@@ -5,8 +5,8 @@ setlocal enabledelayedexpansion
 set VITA_IP=192.168.1.18
 set FTP_PORT=1337
 set LOCAL_DIR=C:\VitaVault_Backups
-set REMOTE_DIR=/ux0:data/VitaVault
-set USB_REL_PATH=data\VitaVault
+set REMOTE_DIR=/ux0:VitaVault
+set USB_REL_PATH=VitaVault
 
 :MENU
 cls
@@ -63,7 +63,7 @@ goto MENU
 cls
 echo.
 echo Current remote folder: %REMOTE_DIR%
-echo Enter the remote backup folder path (e.g. /ux0:data/VitaVault)
+echo Enter the remote backup folder path (e.g. /ux0:VitaVault)
 echo If you changed destination on Vita, enter it here.
 echo.
 set /p REMOTE_DIR=Remote path: 

@@ -30,6 +30,12 @@ void draw_settings_advanced(int selected);
 void draw_file_browser(const char *current_path, char names[][256], int count, int selected);
 int draw_storage_selection_menu(const char *devices[], const char *paths[], int count);
 
+void draw_restore_screen(int selected);
+void draw_ftp_settings(int selected);
+void draw_usb_settings(int selected);
+void draw_tools_screen(int selected);
+void draw_settings_screen(int selected);
+
 void ui_fini();
 
 #endif

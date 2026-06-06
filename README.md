@@ -12,27 +12,55 @@ The author is not responsible for any damage to your hardware or software, data 
 
 ## Features
 
-*   **Recursive Backup Engine:** Copy entire directories while handling system read/write permissions.
+*   **Modern Sidebar Interface:** Intuitive navigation with sidebar sections (Backup, Restore, Tools, FTP, USB, Settings) using D-Pad controls.
+*   **Recursive Backup Engine:** Copy entire directories while handling system read/write permissions. Now includes **timestamps** for game backups.
+*   **Smart Game Discovery:** Automatically scans `ux0:app` for games, including support for DLCs, patches, saves, and trophies.
 *   **Dynamic Destination:** Choose where to save your data (ux0, uma0, ur0, etc.) via an integrated file browser.
 *   **Backup Profiles:** Quickly toggle between Minimal, Normal, and Complete backup sets.
 *   **Management Suite:** View, restore, or delete old backups directly from the app.
 *   **FTP Server:** Built-in FTP server (port 1337) to download backups to your PC.
+*   **USB Mass Storage:** Connect Vita to PC as USB mass storage device. Supports SD2VITA and Memory Cards with preferred device selection.
+*   **Tools Section:** Integrated file browser for changing backup destination and entry source paths.
+*   **Dynamic System Info:** Real-time display of free space with color-coded warnings (red < 1GB, yellow < 5GB, green >= 5GB).
 *   **PC Downloader:** Included `download_backup.bat` script to automatically download backups via FTP.
 *   **Safety Checks:** Integrated logic to prevent accidental selection of critical system partitions as backup targets.
+*   **Dynamic Multi-language Support:** Support for multiple languages via external `.txt` files in the `lang/` folder. Add new translations without recompiling!
 
 ## Controls
 
-### Main Menu
-*   **UP / DOWN**: Navigate through backup entries.
-*   **CIRCLE (O)**: Toggle the selected entry.
+### Main Menu Navigation
+*   **LEFT / RIGHT**: Navigate between sidebar sections (Backup, Restore, Tools, FTP, USB, Settings).
+*   **UP / DOWN**: Navigate within the current section.
+
+### Backup Section
 *   **CROSS (X)**: Start the backup process (includes a free space check).
-*   **SQUARE ([])**: Change the **Source Path** for the selected entry (e.g., custom folder selection).
-*   **SELECT**: Open Settings menu (toggle FTP, compression, checksum, profiles, start FTP server).
-*   **TRIANGLE (▲)**: Open the backup manager list.
-*   **START**: Start the internal FTP Server (port 1337).
+*   **TRIANGLE (▲)**: Open the backup manager list (view, restore, or delete existing backups).
+*   **SQUARE ([])**: Toggle the selected entry (enable/disable for backup).
+*   **CIRCLE (O)**: Go back (no action in main menu, used in submenus).
+
+### Restore Section
+*   **CROSS (X)**: View details of the selected backup and restore.
+*   **SELECT**: Delete the selected backup.
+*   **CIRCLE (O)**: Go back.
+
+### Tools Section
+*   **CROSS (X)**: Select the tool (change backup destination, change entry source path, reset destination).
+*   **CIRCLE (O)**: Go back.
+
+### FTP Section
+*   **CROSS (X)**: Toggle FTP options or start FTP server.
+*   **CIRCLE (O)**: Go back.
+
+### USB Section
+*   **CROSS (X)**: Select USB option (start/stop USB mass storage, select preferred device).
+*   **CIRCLE (O)**: Go back.
+
+### Settings Section
+*   **CROSS (X)**: Toggle/cycle settings (compression, checksum, language, profile) or open advanced settings.
+*   **CIRCLE (O)**: Go back.
 
 ### Key Combos
-*   **SQUARE ([]) (from menu)**: Change the **Global Destination** (where all backups are saved).
+*   **SQUARE ([]) (from menu, not in Backup section)**: Change the **Global Destination** (where all backups are saved).
 *   **SELECT + SQUARE ([])**: Change the source path for the selected entry.
 *   **SELECT + TRIANGLE (▲)**: Reset Global Destination to default (`ux0:data/VitaVault`).
 *   **SELECT + DOWN (▼)**: Cycle through backup profiles quickly.
@@ -51,12 +79,16 @@ The author is not responsible for any damage to your hardware or software, data 
     *   *Inside Details*: **CROSS (X)** to Restore or **SELECT** to Delete (permanently).
 *   **CIRCLE (O)**: Return to main menu.
 
-### Settings (SELECT button)
-*   **Automatic FTP Upload**: When enabled, the "Backup Completed" screen shows the option to start the FTP server for PC download.
-*   **Backup Compression (ZIP)**: Compress backup data into ZIP files.
-*   **Integrity Check (MD5)**: Generate MD5 checksums for backup verification.
-*   **Backup Profile**: Cycle through NONE, MINIMAL, NORMAL, COMPLETE.
-*   **Start FTP Server (Manual)**: Start the FTP server directly from settings.
+### Confirm Dialogs
+*   **LEFT / RIGHT**: Toggle between YES/NO options.
+*   **CROSS (X)**: Confirm selection.
+
+### Settings Options
+*   **Compression**: Toggle ZIP compression for backups.
+*   **Checksum**: Toggle MD5 checksum generation for backup verification.
+*   **Language**: Cycle through available languages.
+*   **Profile**: Cycle through backup profiles (Minimal, Normal, Complete).
+*   **Advanced**: Access advanced settings (delete logs, reset config).
 
 ## How to download backups to your PC
 
@@ -66,8 +98,8 @@ The author is not responsible for any damage to your hardware or software, data 
 
 ### Step-by-step
 
-1. **On PS Vita**: Run a backup with **X**.
-2. **On PS Vita**: On the "Backup Completed!" screen, press **START**.
+1. **On PS Vita**: Run a backup with **X** from the Backup section.
+2. **On PS Vita**: Navigate to the FTP section using LEFT/RIGHT, then press **X** to start the FTP server.
    - The built-in FTP server starts (port 1337).
    - The Vita screen shows the IP address and the backup folder name.
 3. **On PC**: Edit `download_backup.bat` and set `VITA_IP` to your Vita's IP address.
@@ -104,7 +136,7 @@ Save to : C:\VitaVault_Backups
 
 ### Changing the backup destination on Vita
 
-You can change where backups are stored on the Vita by pressing **SQUARE ([])** from the main menu and selecting a new destination (e.g. `ux0:Backup1`, `uma0:VitaVault`, etc.).
+You can change where backups are stored on the Vita by navigating to the **Tools** section using LEFT/RIGHT, then selecting "Change backup destination" with **X** and selecting a new destination (e.g. `ux0:Backup1`, `uma0:VitaVault`, etc.).
 
 When you change this, also update the **remote folder** in `download_backup.bat` (option 6) to match the new path on the Vita.
 

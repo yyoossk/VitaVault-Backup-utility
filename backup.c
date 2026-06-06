@@ -16,32 +16,35 @@
 #include "ui.h"
 #include "hash.h"
 #include "zip_utils.h"
+#include "language.h"
 
 BackupEntry entries[] = {
-    { "Plugins (tai)",       "ur0:tai",                              1 },
-    { "SaveData",            "ux0:user/00/savedata",                 1 },
-    { "Licenses",            "ux0:license",                          1 },
-    { "Game Trophies",       "ux0:user/00/trophy",                   1 },
-    { "LiveArea DB",         "ur0:shell/db",                         1 },
     { "Adrenaline",          "ux0:pspemu/PSP",                       1 },
-    { "Themes / Livearea",   "ux0:theme",                            0 },
-    { "Screenshots",         "ux0:picture",                          0 },
-    { "Music",               "ux0:music",                            0 },
-    { "Videos",              "ux0:video",                             0 },
-    { "Downloads",           "ux0:download",                         0 },
-    { "Boot Config (ur0)",   "ur0:vsh/boot",                         0 },
-    { "tm0_licenses",        "tm0:npdrm/act.dat|tm0:psmdrm/act.dat", 0 },
-    { "System Registry",     "vd0:registry",                         0 },
     { "App metadata",        "ux0:app",                              0 },
-    { "Game Patches",        "ux0:patch",                            0 },
-    { "DLC / Add-ons",       "ux0:addcont",                          0 },
-    { "User Data (ux0)",     "ux0:data",                             0 },
-    { "RetroArch Data",      "ux0:data/retroarch",                   0 },
-    { "System Playlog",      "ur0:user/00/shell/playlog",            0 },
+    { "Boot Config (ur0)",   "ur0:vsh/boot",                         0 },
     { "Custom Folder",       "",                                      0 },
+    { "DLC / Add-ons",       "ux0:addcont",                          0 },
+    { "Downloads",           "ux0:download",                         0 },
+    { "Full ux0 Backup",     "ux0:",                                 0 },
+    { "Game Patches",        "ux0:patch",                            0 },
+    { "Game Trophies",       "ux0:user/00/trophy",                   1 },
+    { "Licenses",            "ux0:license",                          1 },
+    { "LiveArea DB",         "ur0:shell/db",                         1 },
+    { "Music",               "ux0:music",                            0 },
+    { "Plugins (tai)",       "ur0:tai",                              1 },
+    { "RetroArch Data",      "ux0:data/retroarch",                   0 },
+    { "ROMS",                "ux0:roms",                             0 },
+    { "SaveData",            "ux0:user/00/savedata",                 1 },
+    { "Screenshots",         "ux0:picture",                          0 },
+    { "System Playlog",      "ur0:user/00/shell/playlog",            0 },
+    { "System Registry",     "vd0:registry",                         0 },
+    { "Themes / Livearea",   "ux0:theme",                            0 },
+    { "tm0_licenses",        "tm0:npdrm/act.dat|tm0:psmdrm/act.dat", 0 },
+    { "User Data (ux0)",     "ux0:data",                             0 },
+    { "Videos",              "ux0:video",                             0 },
 };
 
-char g_backup_root[PATH_MAX_SIZE] = "ux0:data/VitaVault";
+char g_backup_root[PATH_MAX_SIZE] = "ux0:VitaVault";
 
 int ENTRY_COUNT = sizeof(entries) / sizeof(entries[0]);
 
@@ -53,13 +56,14 @@ char g_last_backup_path[PATH_MAX_SIZE + 128] = "";
 char g_preferred_usb_device[64] = "";
 char g_preferred_usb_name[64] = "";
 char g_last_log_path[PATH_MAX_SIZE + 128] = "";
+int g_sidebar_selected = 0;
 
 const char *profile_names[] = { "NONE", "MINIMAL", "NORMAL", "COMPLETE" };
 
-static ProgressCallback g_progress_cb = NULL;
-static int g_prog_eidx = 0;
-static int g_prog_total_entries = 0;
-static const char *g_prog_entry_name = NULL;
+ProgressCallback g_progress_cb = NULL;
+int g_prog_eidx = 0;
+int g_prog_total_entries = 0;
+const char *g_prog_entry_name = NULL;
 
 static int vshIoMount(SceVshMountId id, const char *path, int permission, int a4, int a5, int a6) {
     uint32_t buf[3];
@@ -543,11 +547,13 @@ void save_config() {
         "checksum=%d\n"
         "preferred_usb_device=%s\n"
         "preferred_usb_name=%s\n"
+        "language=%d\n"
         "# Entry states\n",
         (int)current_profile, g_backup_root,
         ftp_config.enabled,
         ftp_config.compression, ftp_config.checksum,
-        g_preferred_usb_device, g_preferred_usb_name);
+        g_preferred_usb_device, g_preferred_usb_name,
+        (int)g_current_language);
     sceIoWrite(fd, buf, n);
 
     for (int i = 0; i < ENTRY_COUNT; i++) {
@@ -595,6 +601,9 @@ int load_config() {
                 strncpy(g_preferred_usb_device, line + 21, sizeof(g_preferred_usb_device) - 1);
             } else if (strncmp(line, "preferred_usb_name=", 20) == 0) {
                 strncpy(g_preferred_usb_name, line + 20, sizeof(g_preferred_usb_name) - 1);
+            } else if (strncmp(line, "language=", 9) == 0) {
+                int lang = atoi(line + 9);
+                if (lang >= 0) g_current_language = lang;
             } else if (strncmp(line, "ftp_enabled=", 12) == 0)
                 ftp_config.enabled = atoi(line + 12);
             else if (strncmp(line, "ftp_host=", 9) == 0)
@@ -1109,7 +1118,7 @@ int reset_config(void) {
     for (int i = 0; i < ENTRY_COUNT; i++) {
         entries[i].enabled = 0;
     }
-    strcpy(g_backup_root, "ux0:data/VitaVault");
+    strcpy(g_backup_root, "ux0:VitaVault");
     ftp_config.enabled = 0;
     ftp_config.compression = 0;
     ftp_config.checksum = 0;

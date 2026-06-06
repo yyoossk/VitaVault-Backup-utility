@@ -139,7 +139,6 @@ static int copyFile(const char *src, const char *dst) {
 }
 
 static int install_usb_modules(void) {
-    // Check if modules are already installed
     int kernel_exists = checkFileExist("ux0:data/VitaVault/module/kernel.skprx");
     int umass_exists = checkFileExist("ux0:data/VitaVault/module/umass.skprx");
     int vitashell_umass_exists = checkFileExist("ux0:VitaShell/module/umass.skprx");
@@ -148,7 +147,6 @@ static int install_usb_modules(void) {
     if (kernel_exists && umass_exists && vitashell_umass_exists)
         return 0;
 
-    // Try to install from app0:module/
     sceIoMkdir("ux0:data", 0777);
     sceIoMkdir("ux0:data/VitaVault", 0777);
     sceIoMkdir("ux0:data/VitaVault/module", 0777);
@@ -163,7 +161,6 @@ static int install_usb_modules(void) {
         snprintf(src, sizeof(src), "app0:module/%s", USB_MODULE_FILES[i]);
         snprintf(dst, sizeof(dst), "%s%s", USB_MODULE_DIR, USB_MODULE_FILES[i]);
 
-        // Skip if already exists
         if (checkFileExist(dst)) {
             modules_installed++;
             continue;
@@ -244,10 +241,8 @@ SceUID startUsb(const char *usbDevicePath, const char *imgFilePath, int type) {
     SceUID modid = -1;
     int res;
 
-    // Destroy other apps
     sceAppMgrDestroyOtherApp();
 
-    // Load and start usbdevice module
     res = taiLoadStartKernelModule(usbDevicePath, 0, NULL, 0);
     if (res == 0x8002D021) {
         int search_unk[2] = {0, 0};
@@ -476,21 +471,16 @@ int usb_stop_mass_storage() {
 
 // Mount gamecard to ux0: (from VitaShell)
 int mountGamecardUx0() {
-    // Destroy other apps
     sceAppMgrDestroyOtherApp();
 
-    // Copy VitaVault to ur0:temp
     copyPath("ux0:app/VITAVAULT", "ur0:temp/app", NULL);
     copyPath("ux0:appmeta/VITAVAULT", "ur0:temp/appmeta", NULL);
     copyPath("ux0:license/app/VITAVAULT", "ur0:temp/license", NULL);
 
-    // Redirect ux0: to gamecard
     shellUserRedirectUx0("sdstor0:gcd-lp-ign-entire", "sdstor0:gcd-lp-ign-entire");
 
-    // Remount Memory Card
     remount(0x800);
 
-    // Create dirs
     sceIoMkdir("ux0:app", 0006);
     sceIoMkdir("ux0:appmeta", 0006);
     sceIoMkdir("ux0:license", 0006);
@@ -499,11 +489,9 @@ int mountGamecardUx0() {
     sceIoMkdir("ux0:appmeta/VITAVAULT", 0006);
     sceIoMkdir("ux0:license/app/VITAVAULT", 0006);
 
-    
     sceIoMkdir("ux0:data", 0777);
     sceIoMkdir("ux0:temp", 0006);
 
-    
     copyPath("ur0:temp/app", "ux0:app/VITAVAULT", NULL);
     copyPath("ur0:temp/appmeta", "ux0:appmeta/VITAVAULT", NULL);
     copyPath("ur0:temp/license", "ux0:license/app/VITAVAULT", NULL);
@@ -513,16 +501,13 @@ int mountGamecardUx0() {
 
 // Unmount gamecard from ux0: (from VitaShell)
 int umountGamecardUx0() {
-    // Destroy other apps
     sceAppMgrDestroyOtherApp();
 
-    // Restore ux0: patch
     if (checkFileExist("sdstor0:xmc-lp-ign-userext"))
         shellUserRedirectUx0("sdstor0:xmc-lp-ign-userext", "sdstor0:xmc-lp-ign-userext");
     else
         shellUserRedirectUx0("sdstor0:int-lp-ign-userext", "sdstor0:int-lp-ign-userext");
 
-    // Remount Memory Card
     remount(0x800);
 
     return 0;
@@ -530,10 +515,8 @@ int umountGamecardUx0() {
 
 // Mount USB (uma0:) to ux0: (from VitaShell)
 int mountUsbUx0() {
-    // Destroy other apps
     sceAppMgrDestroyOtherApp();
 
-    // Create dirs
     sceIoMkdir("uma0:app", 0006);
     sceIoMkdir("uma0:appmeta", 0006);
     sceIoMkdir("uma0:license", 0006);
@@ -542,22 +525,17 @@ int mountUsbUx0() {
     sceIoMkdir("uma0:appmeta/VITAVAULT", 0006);
     sceIoMkdir("uma0:license/app/VITAVAULT", 0006);
 
-    // Copy VitaVault
     copyPath("ux0:app/VITAVAULT", "uma0:app/VITAVAULT", NULL);
     copyPath("ux0:appmeta/VITAVAULT", "uma0:appmeta/VITAVAULT", NULL);
     copyPath("ux0:license/app/VITAVAULT", "uma0:license/app/VITAVAULT", NULL);
 
-    
     sceIoMkdir("uma0:data", 0777);
     sceIoMkdir("uma0:temp", 0006);
 
-    
     shellUserRedirectUx0("sdstor0:uma-pp-act-a", "sdstor0:uma-lp-act-entire");
 
-    
     vshIoUmount(0xF00, 0, 0, 0);
 
-    
     remount(0x800);
 
     return 0;
@@ -565,19 +543,15 @@ int mountUsbUx0() {
 
 // Unmount USB from ux0: (from VitaShell)
 int umountUsbUx0() {
-    // Destroy other apps
     sceAppMgrDestroyOtherApp();
 
-    // Restore ux0: patch
     if (checkFileExist("sdstor0:xmc-lp-ign-userext"))
         shellUserRedirectUx0("sdstor0:xmc-lp-ign-userext", "sdstor0:xmc-lp-ign-userext");
     else
         shellUserRedirectUx0("sdstor0:int-lp-ign-userext", "sdstor0:int-lp-ign-userext");
 
-    // Remount Memory Card
     remount(0x800);
 
-    // Remount uma0:
     remount(0xF00);
 
     return 0;

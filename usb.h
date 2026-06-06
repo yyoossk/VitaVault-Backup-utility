@@ -25,7 +25,6 @@
 #include <psp2/types.h>
 #include "types.h"
 
-// USB Mass Storage types
 #define USBSTOR_TYPE_FAT    0
 #define USBSTOR_TYPE_MEMORY 1
 
@@ -46,7 +45,6 @@ int usb_start_mass_storage(void);
 int usb_start_mass_storage_with_device(const char *device_path);
 int usb_stop_mass_storage(void);
 
-// Mount/Unmount functions (from VitaShell)
 int mountGamecardUx0();
 int umountGamecardUx0();
 int mountUsbUx0();

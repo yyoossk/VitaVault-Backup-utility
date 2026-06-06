@@ -1,0 +1,170 @@
+# VitaVault Language File - Italiano
+
+language_display_name=Italiano
+
+# Main Menu
+main_title=VitaVault Backup Utility
+sidebar_backup=Backup
+sidebar_restore=Ripristina
+sidebar_games=Giochi
+sidebar_tools=Strumenti
+sidebar_ftp=FTP
+sidebar_usb=USB
+sidebar_settings=Impostazioni
+
+# Backup Entries
+entry_full_ux0=Backup Completo ux0
+entry_plugins_tai=Plugins (tai)
+entry_savedata=SaveData
+entry_licenses=Licenze
+entry_trophies=Trofei Giochi
+entry_livearea_db=LiveArea DB
+entry_adrenaline=Adrenaline
+entry_themes=Temi / Livearea
+entry_screenshots=Screenshot
+entry_music=Musica
+entry_videos=Video
+entry_downloads=Download
+entry_boot_config=Boot Config (ur0)
+entry_tm0_licenses=tm0_licenses
+entry_registry=Registro di Sistema
+entry_app_metadata=Metadata App
+entry_patches=Patch Giochi
+entry_dlc=DLC / Add-ons
+entry_user_data=Dati Utente (ux0)
+entry_retroarch=Dati RetroArch
+entry_roms=ROMS
+entry_playlog=Playlog di Sistema
+entry_custom=Cartella Personalizzata
+
+# Settings
+settings_title=Impostazioni
+settings_ftp_enabled=FTP Auto-upload
+settings_ftp_compression=Compressione FTP
+settings_ftp_checksum=Checksum FTP
+settings_profile=Profilo
+settings_ftp_server=Server FTP
+settings_usb_mass=USB Mass Storage
+settings_usb_pref=Preferenza Dispositivo USB
+settings_advanced=Avanzate
+
+# Advanced Settings
+adv_title=Impostazioni Avanzate
+adv_delete_logs=Elimina Log
+adv_reset_config=Reset Config
+
+# Notifications
+noti_ftp_on=FTP: ON
+noti_ftp_off=FTP: OFF
+noti_usb_on=USB: ON
+noti_usb_off=USB: OFF
+noti_dest_updated=Destinazione Globale aggiornata!
+noti_path_updated=Percorso Sorgente Entry aggiornato!
+noti_dest_reset=Destinazione resettata al default!
+noti_usb_pref_set=Preferenza USB: %s
+noti_usb_pref_auto=Preferenza USB: Auto-seleziona
+noti_usb_stopped=Trasferimento USB fermato
+noti_usb_error=Errore USB fermando!
+noti_stop_usb_first=Ferma USB prima
+noti_stop_ftp_first=Ferma FTP prima
+noti_modules_missing=Moduli USB mancanti nel VPK
+noti_module_copy=Copia moduli USB fallita
+noti_memory_not_found=Memoria non trovata
+noti_no_devices=Nessun dispositivo di archiviazione trovato!
+
+# System Info
+sys_info=Info Sistema
+sys_free=Libero:
+sys_dest=Dest:
+
+# Footer
+footer_backup=O=Avvia Backup  ▲/▼=Naviga  □=Dest  △+□=Sorgente  △+○=Reset
+footer_manage=O=Visualizza  ▲/▼=Naviga  □=Elimina  △=Indietro
+footer_settings=×=Toggle  ▲/▼=Naviga  △=Indietro
+
+# Profiles
+profile_none=NESSUNO
+profile_minimal=MINIMALE
+profile_normale=NORMALE
+profile_complete=COMPLETO
+
+# Common
+common_on=ON
+common_off=OFF
+common_yes=Sì
+common_no=No
+common_back=Indietro
+common_select=Seleziona
+common_cancel=Annulla
+common_delete=Elimina
+common_confirm=Conferma
+common_empty=(vuoto)
+
+# Language Names
+lang_english=Inglese
+lang_italian=Italiano
+
+# USB
+usb_title=USB Mass Storage
+usb_connected=USB Connesso al PC
+usb_device=Dispositivo:
+usb_warning=Non scollegare il cavo durante il trasferimento.
+usb_disconnect=Premi CIRCLE per disconnettere.
+usb_active=USB Mass Storage attivo.
+usb_on_pc=Sul PC apri l'unità Vita:
+usb_use_script=Usa download_backup.bat opzione 5,
+usb_copy_manual=o copia la cartella manualmente.
+usb_press_o=Premi O per disconnettere USB.
+
+# Storage Selection
+storage_title=Seleziona Dispositivo USB
+storage_help=Scegli quale storage montare via USB:
+storage_navigate=▲/▼ Naviga  X=Seleziona  O=Annulla
+storage_auto=Auto-seleziona (chiedi ogni volta)
+
+# Device Names
+dev_memory=Memory Card
+dev_sd2vita=SD2VITA
+dev_psvsd=PSVSD
+dev_game=Game Card
+
+# Tools
+tools_change_dest=Cambia Destinazione Backup
+tools_change_source=Cambia Percorso Sorgente Entry
+tools_reset_dest=Reset Destinazione Backup
+tools_current=Attuale:
+
+# FTP Settings
+ftp_enabled=FTP Abilitato
+ftp_host=Host FTP
+ftp_port=Porta FTP
+ftp_user=Utente FTP
+ftp_password=Password FTP
+ftp_remote_dir=Directory Remota
+ftp_start_server=Avvia Server FTP
+
+# USB Settings
+usb_start_mass=Avvia USB Mass Storage
+usb_pref_device=Dispositivo USB Preferito
+usb_active=ATTIVO
+usb_auto=Auto
+
+# Settings
+setting_compression=Compressione Backup (ZIP)
+setting_checksum=Controllo Integrità (MD5)
+setting_language=Lingua
+setting_profile=Profilo Backup
+setting_advanced=Avanzate
+
+# Messaggi di Errore e Conferma
+noti_no_entries_title=Nessuna voce selezionata
+noti_no_entries_msg=Nessuna voce di backup abilitata.\n\nPremi QUADRATO per abilitare le voci,\npoi premi X per avviare il backup.\n\nPremi un tasto per continuare.
+conf_backup_title=Conferma Backup
+conf_backup_msg=Sei sicuro di voler avviare il backup?
+conf_restore_title=Conferma Ripristino
+conf_restore_msg=Sei sicuro di voler ripristinare questo backup?\nI dati esistenti verranno sovrascritti!
+conf_delete_title=Conferma Eliminazione
+conf_delete_msg=Sei sicuro di voler eliminare questo backup?
+restore_complete_msg=Ripristino completato: %d file, %d errori
+title_backup_running=Backup in corso...
+title_backup_complete=Backup Completato!

@@ -4,11 +4,14 @@
 #include <psp2/kernel/processmgr.h>
 #include <psp2/io/dirent.h>
 #include <stdint.h>
+#include <vita2d.h>
 
 #define COLOR_BG_MAIN       RGBA8(25,  25,  50,  255)
 #define COLOR_BG_PANEL      RGBA8(35,  35,  55,  255)
+#define COLOR_BG_SIDEBAR    RGBA8(15,  15,  35,  255)
 #define COLOR_BG_HEADER     RGBA8(60,  60,  120, 255)
 #define COLOR_BG_SELECTED   RGBA8(70,  90,  160, 255)
+#define COLOR_BG_GLOW       RGBA8(100, 130, 200, 100)
 #define COLOR_ACCENT        RGBA8(100, 180, 255, 255)
 #define COLOR_TEXT_MAIN     RGBA8(220, 220, 240, 255)
 #define COLOR_TEXT_DIM      RGBA8(140, 140, 160, 255)
@@ -38,6 +41,21 @@ typedef struct BackupEntry {
     char source[PATH_MAX_SIZE];
     int enabled;
 } BackupEntry;
+
+typedef struct GameEntry {
+    char title_id[16];
+    char name[128];
+    char app_path[PATH_MAX_SIZE];
+    char addcont_path[PATH_MAX_SIZE];
+    char patch_path[PATH_MAX_SIZE];
+    char savedata_path[PATH_MAX_SIZE];
+    char trophy_path[PATH_MAX_SIZE];
+    vita2d_texture *icon;
+    int has_addcont;
+    int has_patch;
+    int has_savedata;
+    int has_trophy;
+} GameEntry;
 
 typedef void (*ProgressCallback)(const char *entry_name, int current_entry,
                                   int total_entries, SceOff cbytes,
@@ -104,9 +122,14 @@ extern int g_backup_count;
 extern char g_last_backup_path[PATH_MAX_SIZE + 128];
 extern char g_last_log_path[PATH_MAX_SIZE + 128];
 
-// USB state
 extern int g_usb_active;
 extern char g_preferred_usb_device[64];
 extern char g_preferred_usb_name[64];
+
+extern int g_sidebar_selected;
+
+#define MAX_GAMES 100
+extern GameEntry games[];
+extern int GAME_COUNT;
 
 #endif
