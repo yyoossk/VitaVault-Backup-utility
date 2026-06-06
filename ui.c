@@ -1761,3 +1761,51 @@ void draw_settings_screen(int selected) {
     vita2d_end_drawing();
     vita2d_swap_buffers();
 }
+
+
+void draw_language_selection_screen(int selected) {
+    vita2d_start_drawing();
+    vita2d_clear_screen();
+
+    draw_panel(0, 0, g_screen_w, 55, COLOR_BG_HEADER);
+    draw_text(15, 14, COLOR_TEXT_BRIGHT, 1.4f, tr("setting_language"));
+
+    int list_x = 20;
+    int list_y = 70;
+    int list_w = g_screen_w - 40;
+    int item_h = 45;
+
+    if (g_num_languages == 0) {
+        draw_text(list_x, list_y + 20, COLOR_TEXT_DIM, 0.9f, "No languages found in ux0:data/VitaVault/lang/");
+        draw_settings_footer("O: Back to settings");
+    } else {
+        int visible = (g_screen_h - list_y - 40) / item_h;
+        int start = 0;
+        if (selected >= visible) start = selected - visible + 1;
+
+        for (int i = start; i < g_num_languages && i < start + visible; i++) {
+            int y = list_y + (i - start) * item_h;
+
+            if (i == selected) {
+                vita2d_draw_rectangle(list_x - 5, y - 3, list_w + 10, item_h - 2, COLOR_BG_SELECTED);
+            }
+
+            unsigned int text_color = (i == selected) ? COLOR_TEXT_BRIGHT : COLOR_TEXT_MAIN;
+
+            if (i == g_current_language) {
+                draw_text(list_x, y + 4, COLOR_GREEN, 0.9f, "> ");
+                draw_text(list_x + 25, y + 4, text_color, 0.9f, g_languages[i].name);
+            } else {
+                draw_text(list_x + 25, y + 4, text_color, 0.9f, g_languages[i].name);
+            }
+        }
+
+        draw_scrollbar(g_num_languages, visible, selected,
+                       list_x + list_w - 8, list_y, visible * item_h);
+
+        draw_settings_footer("▲/▼ Navigate   X Select   O Back");
+    }
+
+    vita2d_end_drawing();
+    vita2d_swap_buffers();
+}

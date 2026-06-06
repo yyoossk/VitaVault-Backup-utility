@@ -548,17 +548,17 @@ void save_config() {
         "preferred_usb_device=%s\n"
         "preferred_usb_name=%s\n"
         "language=%d\n"
-        "# Entry states\n",
+        "\n# Individual Entry Toggle States (1 = Enabled, 0 = Disabled)\n",
         (int)current_profile, g_backup_root,
         ftp_config.enabled,
         ftp_config.compression, ftp_config.checksum,
         g_preferred_usb_device, g_preferred_usb_name,
         (int)g_current_language);
-    sceIoWrite(fd, buf, n);
+    if (n > 0) sceIoWrite(fd, buf, n);
 
     for (int i = 0; i < ENTRY_COUNT; i++) {
         n = snprintf(buf, sizeof(buf), "%s=%d|%s\n", entries[i].name, entries[i].enabled, entries[i].source);
-        sceIoWrite(fd, buf, n);
+        if (n > 0) sceIoWrite(fd, buf, n);
     }
     sceIoClose(fd);
 }
@@ -583,78 +583,70 @@ int load_config() {
         return 0;
     }
 
-    char line[MAX_LINE];
-    int pos = 0;
-    char ch;
-    while (sceIoRead(fd, &ch, 1) == 1 && pos < MAX_LINE - 1) {
-        if (ch == '\n') {
-            line[pos] = '\0';
-            pos = 0;
-            if (line[0] == '#' || line[0] == '\0') continue;
-
-            if (strncmp(line, "profile=", 8) == 0) {
-                int p = atoi(line + 8);
-                if (p >= 0 && p <= 3) current_profile = (ProfileType)p;
-            } else if (strncmp(line, "backup_root=", 12) == 0) {
-                strncpy(g_backup_root, line + 12, PATH_MAX_SIZE - 1);
-            } else if (strncmp(line, "preferred_usb_device=", 21) == 0) {
-                strncpy(g_preferred_usb_device, line + 21, sizeof(g_preferred_usb_device) - 1);
-            } else if (strncmp(line, "preferred_usb_name=", 20) == 0) {
-                strncpy(g_preferred_usb_name, line + 20, sizeof(g_preferred_usb_name) - 1);
-            } else if (strncmp(line, "language=", 9) == 0) {
-                int lang = atoi(line + 9);
-                if (lang >= 0) g_current_language = lang;
-            } else if (strncmp(line, "ftp_enabled=", 12) == 0)
-                ftp_config.enabled = atoi(line + 12);
-            else if (strncmp(line, "ftp_host=", 9) == 0)
-                strncpy(ftp_config.host, line + 9, 255);
-            else if (strncmp(line, "ftp_port=", 9) == 0)
-                ftp_config.port = atoi(line + 9);
-            else if (strncmp(line, "ftp_user=", 9) == 0)
-                strncpy(ftp_config.user, line + 9, 63);
-            else if (strncmp(line, "ftp_pass=", 9) == 0)
-                strncpy(ftp_config.pass, line + 9, 63);
-            else if (strncmp(line, "ftp_dir=", 8) == 0)
-                strncpy(ftp_config.remote_dir, line + 8, 255);
-            else {
-                char *eq = strchr(line, '=');
-                if (eq) {
-                    *eq = '\0';
-                    char *val = eq + 1;
-                    char *pipe = strchr(val, '|');
-                    for (int i = 0; i < ENTRY_COUNT; i++) {
-                        if (strcmp(entries[i].name, line) == 0) {
-                            if (pipe) {
-                                *pipe = '\0';
-                                strncpy(entries[i].source, pipe + 1, PATH_MAX_SIZE - 1);
-                            }
-                            entries[i].enabled = atoi(val);
-                            break;
-                        }
-                    }
-                }
-            }
-        } else {
-            line[pos++] = ch;
-        }
+    char buffer[65536];
+    int total_read = 0;
+    while (total_read < sizeof(buffer) - 1) {
+        int read = sceIoRead(fd, buffer + total_read, sizeof(buffer) - 1 - total_read);
+        if (read <= 0) break;
+        total_read += read;
     }
-
+    buffer[total_read] = '\0';
     
-    if (pos > 0) {
-        line[pos] = '\0';
-        if (line[0] != '#' && line[0] != '\0') {
+    char *line = strtok(buffer, "\n");
+    while (line != NULL) {
+        char *cr = strchr(line, '\r');
+        if (cr) *cr = '\0';
+        if (line[0] == '#' || line[0] == '\0') {
+            line = strtok(NULL, "\n");
+            continue;
+        }
+
+        if (strncmp(line, "profile=", 8) == 0) {
+            int p = atoi(line + 8);
+            if (p >= 0 && p <= 3) current_profile = (ProfileType)p;
+        } else if (strncmp(line, "backup_root=", 12) == 0) {
+            strncpy(g_backup_root, line + 12, PATH_MAX_SIZE - 1);
+        } else if (strncmp(line, "preferred_usb_device=", 21) == 0) {
+            strncpy(g_preferred_usb_device, line + 21, sizeof(g_preferred_usb_device) - 1);
+        } else if (strncmp(line, "preferred_usb_name=", 20) == 0) {
+            strncpy(g_preferred_usb_name, line + 20, sizeof(g_preferred_usb_name) - 1);
+        } else if (strncmp(line, "language=", 9) == 0) {
+            int lang = atoi(line + 9);
+            if (lang >= 0) g_current_language = lang;
+        } else if (strncmp(line, "ftp_enabled=", 12) == 0)
+            ftp_config.enabled = atoi(line + 12);
+        else if (strncmp(line, "ftp_host=", 9) == 0)
+            strncpy(ftp_config.host, line + 9, 255);
+        else if (strncmp(line, "ftp_port=", 9) == 0)
+            ftp_config.port = atoi(line + 9);
+        else if (strncmp(line, "ftp_user=", 9) == 0)
+            strncpy(ftp_config.user, line + 9, 63);
+        else if (strncmp(line, "ftp_pass=", 9) == 0)
+            strncpy(ftp_config.pass, line + 9, 63);
+        else if (strncmp(line, "ftp_dir=", 8) == 0)
+            strncpy(ftp_config.remote_dir, line + 8, 255);
+        else {
             char *eq = strchr(line, '=');
             if (eq) {
                 *eq = '\0';
+                char *val = eq + 1;
+                char *pipe = strchr(val, '|');
                 for (int i = 0; i < ENTRY_COUNT; i++) {
                     if (strcmp(entries[i].name, line) == 0) {
-                        entries[i].enabled = atoi(eq + 1);
+                        if (pipe) {
+                            *pipe = '\0';
+                            strncpy(entries[i].source, pipe + 1, PATH_MAX_SIZE - 1);
+                        }
+                        entries[i].enabled = atoi(val);
                         break;
                     }
                 }
             }
         }
+        
+        line = strtok(NULL, "\n");
     }
+    
     sceIoClose(fd);
     return 1;
 }

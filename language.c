@@ -4,6 +4,7 @@
 #include <string.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/io/dirent.h>
+#include <psp2/io/stat.h>
 
 Translation g_translations[MAX_TRANSLATIONS];
 int g_translation_count = 0;
@@ -12,6 +13,49 @@ int g_num_languages = 0;
 int g_current_language = 0;
 
 void language_init(void) {
+    
+    sceIoMkdir("ux0:data", 0777);
+    sceIoMkdir("ux0:data/VitaVault", 0777);
+    sceIoMkdir("ux0:data/VitaVault/lang", 0777);
+    
+    
+    const char *src_path = "app0:lang/";
+    const char *dst_path = "ux0:data/VitaVault/lang/";
+    SceUID dir = sceIoDopen(src_path);
+    if (dir >= 0) {
+        SceIoDirent ent;
+        while (sceIoDread(dir, &ent) > 0) {
+            if (strstr(ent.d_name, ".txt")) {
+                char src_file[PATH_MAX_SIZE];
+                char dst_file[PATH_MAX_SIZE];
+                snprintf(src_file, sizeof(src_file), "%s%s", src_path, ent.d_name);
+                snprintf(dst_file, sizeof(dst_file), "%s%s", dst_path, ent.d_name);
+                
+                
+                SceUID check = sceIoOpen(dst_file, SCE_O_RDONLY, 0);
+                if (check < 0) {
+                   
+                    SceUID src_fd = sceIoOpen(src_file, SCE_O_RDONLY, 0);
+                    if (src_fd >= 0) {
+                        SceUID dst_fd = sceIoOpen(dst_file, SCE_O_WRONLY | SCE_O_CREAT, 0777);
+                        if (dst_fd >= 0) {
+                            char buffer[4096];
+                            int read;
+                            while ((read = sceIoRead(src_fd, buffer, sizeof(buffer))) > 0) {
+                                sceIoWrite(dst_fd, buffer, read);
+                            }
+                            sceIoClose(dst_fd);
+                        }
+                        sceIoClose(src_fd);
+                    }
+                } else {
+                    sceIoClose(check);
+                }
+            }
+        }
+        sceIoDclose(dir);
+    }
+    
     language_scan();
     language_load(g_current_language);
 }
@@ -21,7 +65,7 @@ void language_scan(void) {
     const char *base_path = "app0:lang/";
     SceUID dir = sceIoDopen(base_path);
     if (dir < 0) {
-        base_path = "ux0:app/VITAVAULT/lang/";
+        base_path = "ux0:data/VitaVault/lang/";
         dir = sceIoDopen(base_path);
     }
     if (dir < 0) return;
@@ -70,8 +114,8 @@ void language_load(int lang_idx) {
     
     SceUID fd = sceIoOpen(lang_file, SCE_O_RDONLY, 0);
     if (fd < 0) {
-        // Try loading from ux0 if app0 fails
-        snprintf(lang_file, sizeof(lang_file), "ux0:app/VITAVAULT/lang/%s.txt", g_languages[lang_idx].code);
+        // Try loading from ux0:data if app0 fails
+        snprintf(lang_file, sizeof(lang_file), "ux0:data/VitaVault/lang/%s.txt", g_languages[lang_idx].code);
         fd = sceIoOpen(lang_file, SCE_O_RDONLY, 0);
     }
     if (fd < 0) return;
@@ -130,12 +174,33 @@ void language_load(int lang_idx) {
         
         line = strtok(NULL, "\n");
     }
+    
+    
+    for (int i = 0; i < g_translation_count - 1; i++) {
+        for (int j = i + 1; j < g_translation_count; j++) {
+            if (strcmp(g_translations[i].key, g_translations[j].key) > 0) {
+                Translation temp = g_translations[i];
+                g_translations[i] = g_translations[j];
+                g_translations[j] = temp;
+            }
+        }
+    }
 }
 
 const char* tr(const char *key) {
-    for (int i = 0; i < g_translation_count; i++) {
-        if (strcmp(g_translations[i].key, key) == 0) {
-            return g_translations[i].value;
+    int left = 0;
+    int right = g_translation_count - 1;
+    
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        int cmp = strcmp(g_translations[mid].key, key);
+        
+        if (cmp == 0) {
+            return g_translations[mid].value;
+        } else if (cmp < 0) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
         }
     }
     return key;

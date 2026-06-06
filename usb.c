@@ -167,8 +167,11 @@ static int install_usb_modules(void) {
         }
 
         if (!checkFileExist(src)) {
-            
-            continue;
+            // Try alternative path if app0:module/ doesn't work
+            snprintf(src, sizeof(src), "ux0:app/VTBK00001/module/%s", USB_MODULE_FILES[i]);
+            if (!checkFileExist(src)) {
+                continue;
+            }
         }
 
         if (copyFile(src, dst) < 0)

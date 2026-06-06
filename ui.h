@@ -35,6 +35,7 @@ void draw_ftp_settings(int selected);
 void draw_usb_settings(int selected);
 void draw_tools_screen(int selected);
 void draw_settings_screen(int selected);
+void draw_language_selection_screen(int selected);
 
 void ui_fini();
 

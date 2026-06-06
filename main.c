@@ -163,8 +163,11 @@ int run_file_browser(const char *start_path, char *out_path, int for_destination
                         else is_root_selection = 1; 
                     } else {
                         int len = strlen(current);
-                        if (len > 0 && current[len-1] != '/' && current[len-1] != ':') strcat(current, "/");
-                        strcat(current, dir_names[selected]);
+                        if (len > 0 && current[len-1] != '/' && current[len-1] != ':') {
+                            snprintf(current + len, PATH_MAX_SIZE - len, "/%s", dir_names[selected]);
+                        } else {
+                            snprintf(current + len, PATH_MAX_SIZE - len, "%s", dir_names[selected]);
+                        }
                     }
                 }
                 selected = 0;
@@ -200,8 +203,11 @@ int run_file_browser(const char *start_path, char *out_path, int for_destination
             if (pad.buttons & SCE_CTRL_START) {
                 if (selected > 0) {
                     int len = strlen(current);
-                    if (len > 0 && current[len-1] != '/' && current[len-1] != ':') strcat(current, "/");
-                    strcat(current, dir_names[selected]);
+                    if (len > 0 && current[len-1] != '/' && current[len-1] != ':') {
+                        snprintf(current + len, PATH_MAX_SIZE - len, "/%s", dir_names[selected]);
+                    } else {
+                        snprintf(current + len, PATH_MAX_SIZE - len, "%s", dir_names[selected]);
+                    }
                 }
 
                 if (for_destination && (strncmp(current, "os0:", 4) == 0 || strncmp(current, "vd0:", 4) == 0 || strncmp(current, "tm0:", 4) == 0)) {
@@ -1047,10 +1053,50 @@ int main() {
                     ftp_config.checksum = !ftp_config.checksum;
                     save_config();
                 } else if (selected == 2) {
-                    g_current_language++;
-                    if (g_current_language >= g_num_languages) g_current_language = 0;
-                    language_load(g_current_language);
-                    save_config();
+                    // Language selection screen
+                    if (g_num_languages == 0) {
+                        ui_set_notification("No languages found. Add .txt files to ux0:data/VitaVault/lang/");
+                        sceKernelDelayThread(2000000);
+                    } else {
+                        int lang_selected = g_current_language;
+                        int lang_running = 1;
+                        int wait_for_release = 1; // Wait for button release first
+                        
+                        while (lang_running) {
+                            draw_language_selection_screen(lang_selected);
+                            sceCtrlPeekBufferPositive(0, &pad, 1);
+                            sceKernelDelayThread(100000);
+                            
+                            if (wait_for_release) {
+                                if (!(pad.buttons & (SCE_CTRL_CROSS | SCE_CTRL_CIRCLE | SCE_CTRL_UP | SCE_CTRL_DOWN))) {
+                                    wait_for_release = 0;
+                                }
+                                continue;
+                            }
+                            
+                            if (pad.buttons & SCE_CTRL_UP) {
+                                lang_selected--;
+                                if (lang_selected < 0) lang_selected = g_num_languages - 1;
+                                sceKernelDelayThread(200000);
+                            }
+                            if (pad.buttons & SCE_CTRL_DOWN) {
+                                lang_selected++;
+                                if (lang_selected >= g_num_languages) lang_selected = 0;
+                                sceKernelDelayThread(200000);
+                            }
+                            if (pad.buttons & SCE_CTRL_CROSS) {
+                                g_current_language = lang_selected;
+                                language_load(g_current_language);
+                                save_config();
+                                lang_running = 0;
+                                sceKernelDelayThread(300000);
+                            }
+                            if (pad.buttons & SCE_CTRL_CIRCLE) {
+                                lang_running = 0;
+                                sceKernelDelayThread(300000);
+                            }
+                        }
+                    }
                 } else if (selected == 3) {
                     cycle_profile();
                 } else if (selected == 4) {

@@ -111,6 +111,10 @@ void md5_final(uint8_t digest[16], MD5_CTX *ctx) {
 }
 
 void md5_to_str(char *out, uint8_t digest[16]) {
-    for (int i = 0; i < 16; i++) sprintf(out + (i * 2), "%02x", digest[i]);
+    static const char hex_table[] = "0123456789abcdef";
+    for (int i = 0; i < 16; i++) {
+        out[i * 2] = hex_table[digest[i] >> 4];
+        out[i * 2 + 1] = hex_table[digest[i] & 0x0F];
+    }
     out[32] = '\0';
 }
